@@ -57,6 +57,25 @@ export function useEchoLidar() {
 
     const player = createAudioPlayer(audioUrl);
     playerRef.current = player;
+
+    player.addListener('playbackStatusUpdate', (status) => {
+      const playbackStatus = status as {
+        isLoaded?: boolean;
+        didJustFinish?: boolean;
+        error?: string;
+      };
+
+      if (playbackStatus.error) {
+        console.error('[Audio] ElevenLabs playback failed:', playbackStatus.error);
+        setError(`ElevenLabs playback failed: ${playbackStatus.error}`);
+      }
+
+      if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
+        playerRef.current?.remove();
+        playerRef.current = null;
+      }
+    });
+
     player.play();
   }, []);
 
