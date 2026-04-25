@@ -3,6 +3,8 @@ import CoreVideo
 import Foundation
 
 final class DepthAnalyzer {
+  private let meshClassifier = MeshClassifier()
+
   func analyze(frame: ARFrame, mode: String) -> [String: Any]? {
     guard let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth else {
       return nil
@@ -103,10 +105,12 @@ final class DepthAnalyzer {
       return nil
     }
 
+    let label = meshClassifier.classify(frame: frame, direction: bestDirection, distance: bestDistance)
+
     return [
       "nearestDistanceMeters": Double(bestDistance),
       "direction": bestDirection,
-      "label": "obstacle",
+      "label": label,
       "confidence": bestConfidence,
       "mode": mode,
       "timestampMs": Int(Date().timeIntervalSince1970 * 1000),

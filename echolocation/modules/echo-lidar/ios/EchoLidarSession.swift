@@ -18,11 +18,12 @@ enum EchoLidarSessionError: LocalizedError {
 final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   private let depthAnalyzer = DepthAnalyzer()
+  private let speechController = SpeechController()
 
   private var sendEvent: ((String, [String: Any]) -> Void)?
   private var mode = "describe"
   private var mockTimer: Timer?
-  private var useMockEvents = true
+  private var useMockEvents = false
 
   func start(mode: String, sendEvent: @escaping (String, [String: Any]) -> Void) throws {
     self.mode = mode
@@ -56,6 +57,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     mockTimer?.invalidate()
     mockTimer = nil
     arSession.pause()
+    speechController.stop()
   }
 
   func disableMockMode() {
@@ -67,6 +69,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       return
     }
 
+    speechController.process(update: update, mode: mode)
     sendEvent?("onEchoUpdate", update)
   }
 
