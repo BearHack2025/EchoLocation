@@ -32,11 +32,16 @@ export function useElevenLabs() {
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const speechGenRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const isConfigured = isTtsConfigured() && isSttConfigured();
 
   const stopAllPlayback = useCallback(() => {
     speechGenRef.current += 1;
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
     if (playerRef.current) {
       try { playerRef.current.pause(); } catch {}
       try { playerRef.current.remove(); } catch {}
@@ -57,8 +62,11 @@ export function useElevenLabs() {
       setError(null);
       setLastSpokenText(text);
 
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       try {
-        const result = await speak(text, config);
+        const result = await speak(text, config, controller.signal);
         if (myGen !== speechGenRef.current) return false;
         if (result.audioUrl === undefined) {
           setError('No audio URL returned from ElevenLabs');

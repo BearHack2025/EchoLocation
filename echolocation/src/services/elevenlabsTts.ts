@@ -40,7 +40,8 @@ export const isConfigured = (): boolean => {
 
 export const speak = async (
   text: string,
-  config?: Partial<ElevenLabsTTSConfig>
+  config?: Partial<ElevenLabsTTSConfig>,
+  signal?: AbortSignal
 ): Promise<ElevenLabsTTSResponse> => {
   const apiKey = config?.apiKey || getApiKey();
   if (!apiKey) {
@@ -60,6 +61,11 @@ export const speak = async (
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onExternalAbort);
+  }
 
   try {
     const response = await fetch(
@@ -83,6 +89,7 @@ export const speak = async (
     );
 
     clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
 
     if (!response.ok) {
       const error = await response.text();
@@ -108,6 +115,7 @@ export const speak = async (
     return { audioUrl };
   } catch (error) {
     clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
     if (error instanceof ElevenLabsError) {
       throw error;
     }
