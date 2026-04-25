@@ -636,18 +636,19 @@ Speech is handled through the SpeechController in Swift with two paths:
 
 ## ElevenLabs STT Integration
 
-This project uses ElevenLabs for speech-to-text (STT) to transcribe voice commands. The implementation uses WebSocket streaming for real-time transcription.
+This project uses ElevenLabs for speech-to-text (STT) to transcribe voice commands. The implementation uses WebSocket streaming for real-time transcription with automatic fallback to iOS built-in speech recognition.
 
 ### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │              VoiceCommandController (Swift)                     │
-│  • Uses iOS SFSpeechRecognizer for voice capture                │
-│  • Runs speech recognition loop continuously                  │
-│  • Matches transcript against known commands                    │
+│  • Captures audio from AVAudioEngine at 16kHz 16-bit mono      │
+│  • Streams audio chunks via onAudioChunk callback              │
+│  • Runs SFSpeechRecognizer for built-in fallback               │
+│  • Matches transcript against known commands                   │
 └─────────────────────────────────────────────────────────────────┘
-                              ↓ onVoiceCommand
+                    ↓ onAudioChunk (events)
 ┌─────────────────────────────────────────────────────────────────┐
 │                    audio-service.ts                              │
 │  • startRealtimeSTT(callbacks)  - Connect to ElevenLabs WebSocket│
@@ -655,7 +656,23 @@ This project uses ElevenLabs for speech-to-text (STT) to transcribe voice comman
 │  • commitSTT()                 - Signal end of speech          │
 │  • stopRealtimeSTT()           - Disconnect                    │
 └─────────────────────────────────────────────────────────────────┘
+                    ↓ onTranscript
+┌─────────────────────────────────────────────────────────────────┐
+│                    use-echo-lidar.ts                             │
+│  • Handles ElevenLabs transcript events                        │
+│  • Emits onVoiceCommand with source: 'elevenlabs'              │
+│  • Falls back to Swift's built-in on ElevenLabs failure        │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+### Audio Flow
+
+1. **Swift captures audio**: VoiceCommandController taps AVAudioEngine, converts to 16kHz 16-bit mono PCM
+2. **Send to JS**: Audio chunks sent via `onAudioChunk` event (Int16Array)
+3. **Stream to ElevenLabs**: `use-echo-lidar.ts` forwards chunks to WebSocket
+4. **Silence detection**: After 800ms of silence, `commitSTT()` is called to signal end of speech
+5. **Receive transcript**: Final transcripts emitted as `onVoiceCommand` events
+6. **Fallback**: If ElevenLabs fails, Swift's SFSpeechRecognizer continues handling voice commands
 
 ### STT Functions
 
@@ -683,6 +700,8 @@ interface RealtimeSTTCallbacks {
 - **Model**: `scribe_v2_realtime`
 - **Endpoint**: `wss://api.elevenlabs.io`
 - **Timeout**: 10 seconds
+- **Audio Format**: 16kHz, 16-bit, mono PCM
+- **Language**: English (hardcoded via `language_code=eng`)
 
 ### Usage
 
@@ -703,6 +722,21 @@ if (connected) {
 }
 ```
 
+### Dual-Mode Operation
+
+The STT system operates in two modes depending on `useBuiltin` setting:
+
+| Mode | STT Engine | Description |
+|------|------------|-------------|
+| `useBuiltin=true` | iOS SFSpeechRecognizer | Free, offline, no API calls |
+| `useBuiltin=false` | ElevenLabs Scribe | Premium accuracy, requires API key |
+
+When `useBuiltin=false`:
+1. ElevenLabs WebSocket connection attempted on voice command start
+2. Audio chunks streamed to ElevenLabs for real-time transcription
+3. On ElevenLabs failure/error: Falls back to Swift's built-in SFSpeechRecognizer
+4. Voice commands emitted with `source: 'elevenlabs'` or `source: 'speech'`
+
 ### Fallback
 
 If ElevenLabs STT fails to connect or times out, the system falls back to iOS built-in speech recognition (SFSpeechRecognizer in VoiceCommandController.swift). The built-in recognizer is:
@@ -711,7 +745,7 @@ If ElevenLabs STT fails to connect or times out, the system falls back to iOS bu
 - Works offline
 - Free to use
 
-The fallback happens automatically in the Swift layer.
+The fallback happens automatically - ElevenLabs is attempted first (when `useBuiltin=false`), and Swift's built-in recognizer handles commands if ElevenLabs fails.
 
 ## Hybrid TTS Strategy
 

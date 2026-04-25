@@ -34,17 +34,22 @@ export type VoiceCommandEvent = {
   command: VoiceCommandName;
   transcript: string;
   timestampMs: number;
-  source: 'speech';
+  source: 'speech' | 'elevenlabs';
 };
 
 export type EchoLidarModuleEvents = {
   onEchoUpdate: (event: EchoUpdate) => void;
   onVoiceCommand: (event: VoiceCommandEvent) => void;
   onSpeechRequest: (event: SpeechRequestEvent) => void;
+  onAudioChunk: (event: AudioChunkEvent) => void;
 };
 
 export type SpeechRequestEvent = {
   text: string;
   mode: EchoMode;
   timestamp: number;
+};
+
+export type AudioChunkEvent = {
+  data: number[];
 };

@@ -59,7 +59,7 @@ class ElevenLabsSTTConnection {
     logAudioRequest('elevenlabs-stt', 'connecting');
 
     return new Promise((resolve, reject) => {
-      const url = `${ELEVENLABS_WS_BASE}?api_key=${this.apiKey}&model_id=${this.modelId}`;
+      const url = `${ELEVENLABS_WS_BASE}?api_key=${this.apiKey}&model_id=${this.modelId}&language_code=eng`;
 
       this.timeoutId = setTimeout(() => {
         reject(new ElevenLabsSTTError('Connection timeout'));

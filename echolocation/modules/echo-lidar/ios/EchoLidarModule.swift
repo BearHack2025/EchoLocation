@@ -20,7 +20,7 @@ public final class EchoLidarModule: Module {
       EchoLidarModule.current = self
     }
 
-    Events("onEchoUpdate", "onVoiceCommand", "onSpeechRequest")
+    Events("onEchoUpdate", "onVoiceCommand", "onSpeechRequest", "onAudioChunk")
 
     View(EchoLidarPreviewView.self) {
       Prop("showHeatmap") { (view: EchoLidarPreviewView, value: Bool?) in
@@ -79,6 +79,11 @@ public final class EchoLidarModule: Module {
         return
       }
 
+      self.voiceCommandController.onAudioChunk = { [weak self] data in
+        let byteArray = Array(data)
+        self?.sendEvent("onAudioChunk", ["data": byteArray])
+      }
+
       try await self.voiceCommandController.startListening { payload in
         self.sendEvent("onVoiceCommand", payload)
       }
@@ -86,6 +91,7 @@ public final class EchoLidarModule: Module {
 
     AsyncFunction("stopVoiceCommands") { [weak self] in
       await MainActor.run {
+        self?.voiceCommandController.onAudioChunk = nil
         self?.voiceCommandController.stopListening()
       }
     }

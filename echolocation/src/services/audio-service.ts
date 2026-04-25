@@ -27,6 +27,7 @@ import {
 
 export { isConfigured as isElevenLabsConfigured } from './elevenlabsTts';
 export { ElevenLabsError } from './elevenlabsTts';
+export { isConfigured as isElevenSttConfigured } from './elevenlabsStt';
 export type { ElevenLabsTTSConfig } from './elevenlabsTts';
 export type { ElevenLabsSTTConfig } from './elevenlabsStt';
 

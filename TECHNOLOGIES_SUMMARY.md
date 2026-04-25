@@ -77,14 +77,15 @@ Important:
 
 It is used for:
 
-- text-to-speech (TTS) - voice output for commands and responses
-- speech-to-text (STT) - WebSocket integration for voice input
+- **text-to-speech (TTS)** - voice output for commands and responses using premium voices
+- **speech-to-text (STT)** - WebSocket realtime streaming using `scribe_v2_realtime` model with English language optimization
 
 In this project, `ElevenLabs` answers:
 
-- how should the response sound?
+- how should the response sound? (TTS)
+- what did the user say? (STT - voice commands)
 
-It does not identify objects by itself. It speaks the final result that comes from `ARKit`, `ML Kit`, and `Gemma`.
+When `useBuiltin=false`, voice commands are transcribed via ElevenLabs Scribe WebSocket for higher accuracy. If ElevenLabs is unavailable or fails, the app falls back to iOS built-in speech recognition (SFSpeechRecognizer).
 
 ## How They Work Together
 

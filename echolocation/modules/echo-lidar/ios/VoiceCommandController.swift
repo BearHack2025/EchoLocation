@@ -26,10 +26,13 @@ final class VoiceCommandController: NSObject {
   private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
   private var recognitionTask: SFSpeechRecognitionTask?
   private var onCommand: (([String: Any]) -> Void)?
+  var onAudioChunk: ((Data) -> Void)?
   private var isListening = false
   private var lastEmittedCommand = ""
   private var lastEmittedAt = Date.distantPast
   private let commandCooldown: TimeInterval = 1.5
+  private var audioConverter: AVAudioConverter?
+  private let targetSampleRate: Double = 16000
 
   func startListening(onCommand: @escaping ([String: Any]) -> Void) async throws {
     guard let speechRecognizer, speechRecognizer.isAvailable else {
@@ -50,6 +53,7 @@ final class VoiceCommandController: NSObject {
   func stopListening() {
     isListening = false
     onCommand = nil
+    onAudioChunk = nil
     recognitionTask?.cancel()
     recognitionTask = nil
     recognitionRequest?.endAudio()
@@ -114,8 +118,15 @@ final class VoiceCommandController: NSObject {
     let inputNode = audioEngine.inputNode
     let recordingFormat = inputNode.outputFormat(forBus: 0)
 
-    inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-      self?.recognitionRequest?.append(buffer)
+    let targetFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: targetSampleRate, channels: 1, interleaved: true)
+    audioConverter = AVAudioConverter(from: recordingFormat, to: targetFormat!)
+
+    inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { [weak self] buffer, _ in
+      guard let self else { return }
+
+      self.recognitionRequest?.append(buffer)
+
+      self.convertAndSendAudio(buffer: buffer)
     }
 
     audioEngine.prepare()
@@ -135,6 +146,31 @@ final class VoiceCommandController: NSObject {
       if result?.isFinal == true || error != nil {
         self.restartIfNeeded()
       }
+    }
+  }
+
+  private func convertAndSendAudio(buffer: AVAudioPCMBuffer) {
+    guard let onAudioChunk = onAudioChunk,
+          let converter = audioConverter else {
+      return
+    }
+
+    let frameCount = AVAudioFrameCount(targetSampleRate * Double(buffer.frameLength) / buffer.format.sampleRate)
+    guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: frameCount) else {
+      return
+    }
+
+    var error: NSError?
+    let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+      outStatus.pointee = .haveData
+      return buffer
+    }
+
+    converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
+
+    if error == nil, let channelData = convertedBuffer.int16ChannelData {
+      let data = Data(bytes: channelData[0], count: Int(convertedBuffer.frameLength) * MemoryLayout<Int16>.size)
+      onAudioChunk(data)
     }
   }
 
