@@ -21,13 +21,17 @@ export interface ElevenLabsTTSResponse {
 }
 
 const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
-const DEFAULT_MODEL_ID = 'elevenMono_v1';
+const DEFAULT_MODEL_ID = 'eleven_flash_v2_5';
 
 const cachedAudio: Map<string, string> = new Map();
 const MAX_CACHE_SIZE = 20;
 
 export const getApiKey = (): string => {
   return process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
+};
+
+export const getModelId = (): string => {
+  return process.env.EXPO_PUBLIC_ELEVENLABS_MODEL_ID || DEFAULT_MODEL_ID;
 };
 
 export const isConfigured = (): boolean => {
@@ -45,7 +49,7 @@ export const speak = async (
   }
 
   const voiceId = config?.voiceId || DEFAULT_VOICE_ID;
-  const modelId = config?.modelId || DEFAULT_MODEL_ID;
+  const modelId = config?.modelId || getModelId();
   const cacheKey = `${voiceId}:${text}`;
   const cachedUrl = cachedAudio.get(cacheKey);
   if (cachedUrl) {
@@ -88,13 +92,13 @@ export const speak = async (
     }
 
     const audioBlob = await response.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
+    const audioArrayBuffer = await audioBlob.arrayBuffer();
+    const audioBase64 = arrayBufferToBase64(audioArrayBuffer);
+    const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
 
     if (cachedAudio.size >= MAX_CACHE_SIZE) {
       const firstKey = cachedAudio.keys().next().value;
       if (firstKey) {
-        const oldUrl = cachedAudio.get(firstKey);
-        if (oldUrl) URL.revokeObjectURL(oldUrl);
         cachedAudio.delete(firstKey);
       }
     }
@@ -127,7 +131,6 @@ export const speakAndPlay = async (
 };
 
 export const clearCache = (): void => {
-  cachedAudio.forEach((url) => URL.revokeObjectURL(url));
   cachedAudio.clear();
 };
 
@@ -138,3 +141,16 @@ export const availableVoices = [
   { id: 'MF4bmhG2ZsrAZZ7fNpB', name: 'Adam' },
   { id: 'pNInz6ob2mDXGfyi2Xv', name: 'Sam' },
 ];
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
