@@ -489,3 +489,81 @@ The standard to keep applying is:
 - if Expo already abstracts it, use Expo
 - if a stable SDK already solves it, use that
 - only write custom logic for the narrow gap in the middle
+
+## ElevenLabs Integration
+
+This project uses ElevenLabs for premium voice output (TTS) and voice input transcription (STT).
+
+### Architecture
+
+```
+React Native App
+  -> useElevenLabs hook
+  -> elevenlabsTts.ts (text-to-speech)
+  -> elevenlabsStt.ts (speech-to-text)
+  -> expo-av (audio playback/recording)
+  -> ElevenLabs Cloud API
+```
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/elevenlabsTts.ts` | TTS worker - generates audio from text |
+| `src/services/elevenlabsStt.ts` | STT worker - transcribes audio to text |
+| `src/hooks/useElevenLabs.ts` | React hook for speech and transcription |
+| `app.json` (extra.elevenlabsApiKey) | API key storage |
+
+### API Key Configuration
+
+Set the ElevenLabs API key in `app.json`:
+
+```json
+{
+  "expo": {
+    "extra": {
+      "elevenlabsApiKey": "your_api_key_here"
+    }
+  }
+}
+```
+
+Or use environment variables:
+
+```
+EXPO_PUBLIC_ELEVENLABS_API_KEY=your_api_key_here
+```
+
+### Usage
+
+```typescript
+import { useElevenLabs } from './hooks/useElevenLabs';
+
+function MyComponent() {
+  const { speakText, transcribeAudio, isConfigured } = useElevenLabs();
+
+  // Text-to-Speech
+  const handleSpeak = async () => {
+    await speakText('Object detected: chair, two meters ahead');
+  };
+
+  // Speech-to-Text
+  const handleTranscribe = async (audioBlob: Blob) => {
+    const text = await transcribeAudio(audioBlob);
+    console.log('Transcribed:', text);
+  };
+}
+```
+
+### Swift Layer Integration
+
+The native Swift layer (`SpeechController.swift`) uses `AVSpeechSynthesizer` for immediate feedback. ElevenLabs supplements this for the richer "describe scene" flow:
+
+1. Fast feedback: AVSpeechSynthesizer (native Swift)
+2. Rich descriptions: ElevenLabs TTS (JavaScript)
+
+### What To Avoid
+
+- Do not use ElevenLabs in the real-time obstacle warning loop (latency)
+- Do not stream audio continuously (cost)
+- Do not rely on ElevenLabs when offline

@@ -485,7 +485,65 @@ Definition of done:
 
 ## Phase 10: ElevenLabs Voice
 
-### Task 10.1: Add ElevenLabs Voice
+### Task 10.1: Add ElevenLabs Environment Setup
+
+**Requirements**:
+
+- add `EXPO_PUBLIC_ELEVENLABS_API_KEY` to `app.json` or `.env` file
+- create `.env.example` with placeholder
+
+**Definition of done**:
+
+- API key is configurable without hardcoding
+
+### Task 10.2: Create ElevenLabs TTS Service
+
+**Files to create**:
+
+- `src/services/elevenlabsTts.ts`
+
+**Requirements**:
+
+- implement `speak(text, config)` that calls ElevenLabs Text-to-Speech API
+- implement audio caching for repeated phrases
+- expose `isConfigured()` check
+
+**Definition of done**:
+
+- TTS service generates audio from ElevenLabs
+
+### Task 10.3: Create ElevenLabs STT Service
+
+**Files to create**:
+
+- `src/services/elevenlabsStt.ts`
+
+**Requirements**:
+
+- implement `transcribe(audioBlob)` that calls ElevenLabs Scribe API
+- handle FormData upload for audio files
+
+**Definition of done**:
+
+- STT service transcribes audio to text
+
+### Task 10.4: Create ElevenLabs Hook
+
+**Files to create**:
+
+- `src/hooks/useElevenLabs.ts`
+
+**Requirements**:
+
+- integrate with expo-av for audio playback
+- provide `speakText()` function
+- provide `transcribeAudio()` function
+
+**Definition of done**:
+
+- React components can use ElevenLabs through the hook
+
+### Task 10.5: Add ElevenLabs Voice
 
 Requirements:
 
@@ -496,7 +554,7 @@ Definition of done:
 
 - richer spoken responses work reliably in demo conditions
 
-### Task 10.2: Add One Explicit AI Demo Action
+### Task 10.6: Add One Explicit AI Demo Action
 
 Requirements:
 
@@ -564,6 +622,12 @@ Create these first:
 - `modules/echo-lidar/ios/EchoLidarSession.swift`
 - `modules/echo-lidar/ios/DepthAnalyzer.swift`
 - `modules/echo-lidar/ios/SpeechController.swift`
+
+ElevenLabs integration files:
+
+- `src/services/elevenlabsTts.ts` - TTS worker
+- `src/services/elevenlabsStt.ts` - STT worker
+- `src/hooks/useElevenLabs.ts` - React hook
 
 ## Daily Checklist
 
