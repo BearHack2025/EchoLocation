@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
-import type { EchoUpdate, VoiceCommandEvent } from 'echo-lidar';
+import type { EchoUpdate, SceneLabelResult, SnapshotCapture, VoiceCommandEvent } from 'echo-lidar';
 
 export type { EchoUpdate };
 
 export function useEchoLidar() {
   const [latest, setLatest] = useState<EchoUpdate | null>(null);
   const [latestCommand, setLatestCommand] = useState<VoiceCommandEvent | null>(null);
+  const [latestSnapshot, setLatestSnapshot] = useState<SnapshotCapture | null>(null);
+  const [latestSceneLabels, setLatestSceneLabels] = useState<SceneLabelResult['labels']>([]);
   const [running, setRunning] = useState(false);
   const [listening, setListening] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isSupported = EchoLidarModule.isSupported();
@@ -39,9 +43,38 @@ export function useEchoLidar() {
     setRunning(false);
   };
 
+  const captureSnapshot = async () => {
+    setError(null);
+    setCapturing(true);
+    try {
+      const snapshot = await EchoLidarModule.captureSnapshot();
+      setLatestSnapshot(snapshot);
+      setLatestSceneLabels([]);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const analyzeScene = async () => {
+    setError(null);
+    setAnalyzing(true);
+    try {
+      const result = await EchoLidarModule.captureAndLabelScene();
+      setLatestSnapshot(result.snapshot);
+      setLatestSceneLabels(result.labels);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   useEffect(() => {
     const echoSub = EchoLidarEmitter.addListener('onEchoUpdate', (event) => {
       setLatest(event);
+      setLatestSceneLabels(event.visionLabels ?? []);
     });
 
     const voiceSub = EchoLidarEmitter.addListener('onVoiceCommand', (event) => {
@@ -54,5 +87,21 @@ export function useEchoLidar() {
     };
   }, []);
 
-  return { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop };
+  return {
+    latest,
+    latestCommand,
+    latestSnapshot,
+    latestSceneLabels,
+    running,
+    listening,
+    capturing,
+    analyzing,
+    error,
+    isSupported,
+    supportsDepth,
+    start,
+    stop,
+    captureSnapshot,
+    analyzeScene,
+  };
 }

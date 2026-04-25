@@ -1,6 +1,12 @@
 import { EventEmitter, requireNativeModule } from 'expo-modules-core';
 
-import type { EchoLidarModuleEvents, EchoMode, EchoSupportStatus } from './EchoLidar.types';
+import type {
+  EchoLidarModuleEvents,
+  EchoMode,
+  EchoSupportStatus,
+  SceneLabelResult,
+  SnapshotCapture,
+} from './EchoLidar.types';
 
 type NativeEchoLidarModule = {
   isSupported(): boolean;
@@ -11,6 +17,8 @@ type NativeEchoLidarModule = {
   stop(): Promise<void>;
   startVoiceCommands(): Promise<void>;
   stopVoiceCommands(): Promise<void>;
+  captureSnapshot(): Promise<SnapshotCapture>;
+  captureAndLabelScene(): Promise<SceneLabelResult>;
 };
 
 // requireNativeModule throws in Expo Go / simulator without a dev build.
@@ -28,6 +36,8 @@ try {
     stop: async () => {},
     startVoiceCommands: async () => { throw new Error('Voice commands require a development build on iOS'); },
     stopVoiceCommands: async () => {},
+    captureSnapshot: async () => { throw new Error('Snapshot capture requires a development build on iOS'); },
+    captureAndLabelScene: async () => { throw new Error('ML Kit scene labeling requires a development build on iOS'); },
   };
 }
 

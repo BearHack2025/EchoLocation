@@ -15,11 +15,34 @@ export type EchoLabel =
 export type EchoUpdate = {
   nearestDistanceMeters: number | null;
   direction: EchoDirection;
-  label: EchoLabel;
+  label: string;
+  meshLabel?: EchoLabel;
+  visionLabel?: string;
+  visionConfidence?: number;
+  visionLabels?: SceneLabel[];
   confidence: number;
   mode: EchoMode;
   timestampMs: number;
   source: 'mock' | 'arkit';
+};
+
+export type SnapshotCapture = {
+  jpegBase64: string;
+  width: number;
+  height: number;
+  timestampMs: number;
+  source: 'arkit';
+};
+
+export type SceneLabel = {
+  text: string;
+  confidence: number;
+  index: number;
+};
+
+export type SceneLabelResult = {
+  snapshot: SnapshotCapture;
+  labels: SceneLabel[];
 };
 
 export type EchoSupportStatus = {

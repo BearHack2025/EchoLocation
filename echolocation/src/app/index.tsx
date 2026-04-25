@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -7,7 +7,27 @@ import { Spacing } from '@/constants/theme';
 import { useEchoLidar } from '@/hooks/use-echo-lidar';
 
 export default function HomeScreen() {
-  const { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop } = useEchoLidar();
+  const {
+    latest,
+    latestCommand,
+    latestSnapshot,
+    latestSceneLabels,
+    running,
+    listening,
+    capturing,
+    analyzing,
+    error,
+    isSupported,
+    supportsDepth,
+    start,
+    stop,
+    captureSnapshot,
+    analyzeScene,
+  } = useEchoLidar();
+
+  const snapshotUri = latestSnapshot
+    ? `data:image/jpeg;base64,${latestSnapshot.jpegBase64}`
+    : null;
 
   return (
     <ThemedView style={styles.container}>
@@ -26,7 +46,9 @@ export default function HomeScreen() {
           <ThemedView type="backgroundElement" style={styles.card}>
             <Row label="Distance" value={latest.nearestDistanceMeters != null ? `${latest.nearestDistanceMeters.toFixed(2)} m` : '—'} />
             <Row label="Direction" value={latest.direction} />
-            <Row label="Label" value={latest.label} />
+            <Row label="Spoken label" value={latest.label} />
+            <Row label="Mesh label" value={latest.meshLabel ?? '—'} />
+            <Row label="Vision label" value={latest.visionLabel ?? '—'} />
             <Row label="Confidence" value={`${(latest.confidence * 100).toFixed(0)}%`} />
             <Row label="Source" value={latest.source} />
           </ThemedView>
@@ -42,6 +64,37 @@ export default function HomeScreen() {
           <Row label="Last command" value={latestCommand?.command ?? '—'} />
           <Row label="Transcript" value={latestCommand?.transcript ?? '—'} />
         </ThemedView>
+
+        {latestSnapshot ? (
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <Row label="Snapshot" value={`${latestSnapshot.width} × ${latestSnapshot.height}`} />
+            <Row label="Labels" value={latestSceneLabels.length ? `${latestSceneLabels.length}` : '—'} />
+            {snapshotUri ? (
+              <Image
+                source={{ uri: snapshotUri }}
+                style={[
+                  styles.snapshot,
+                  { aspectRatio: latestSnapshot.width / Math.max(1, latestSnapshot.height) },
+                ]}
+              />
+            ) : null}
+            {latestSceneLabels.length ? (
+              <View style={styles.labels}>
+                {latestSceneLabels.map((label) => (
+                  <Row
+                    key={`${label.index}-${label.text}`}
+                    label={label.text}
+                    value={`${(label.confidence * 100).toFixed(0)}%`}
+                  />
+                ))}
+              </View>
+            ) : (
+              <ThemedText type="small" themeColor="textSecondary">
+                no ML Kit labels yet
+              </ThemedText>
+            )}
+          </ThemedView>
+        ) : null}
 
         {error ? (
           <ThemedText type="small" style={[styles.center, styles.error]}>{error}</ThemedText>
@@ -61,6 +114,27 @@ export default function HomeScreen() {
             disabled={!running}
           >
             <ThemedText type="smallBold" style={styles.btnLabel}>Stop</ThemedText>
+          </Pressable>
+        </View>
+
+        <View style={styles.buttons}>
+          <Pressable
+            style={[styles.btn, styles.btnSecondary, (!running || capturing) && styles.btnDisabled]}
+            onPress={captureSnapshot}
+            disabled={!running || capturing}
+          >
+            <ThemedText type="smallBold" style={styles.btnLabel}>
+              {capturing ? 'Capturing...' : 'Capture'}
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.btn, styles.btnAnalyze, (!running || analyzing) && styles.btnDisabled]}
+            onPress={analyzeScene}
+            disabled={!running || analyzing}
+          >
+            <ThemedText type="smallBold" style={styles.btnLabel}>
+              {analyzing ? 'Analyzing...' : 'Analyze'}
+            </ThemedText>
           </Pressable>
         </View>
 
@@ -109,7 +183,17 @@ const styles = StyleSheet.create({
   },
   btnStart: { backgroundColor: '#3c87f7' },
   btnStop: { backgroundColor: '#ff453a' },
+  btnSecondary: { backgroundColor: '#667085' },
+  btnAnalyze: { backgroundColor: '#0f9d58' },
   btnDisabled: { opacity: 0.4 },
   btnLabel: { color: '#ffffff' },
   error: { color: '#ff453a' },
+  snapshot: {
+    width: '100%',
+    borderRadius: Spacing.two,
+    backgroundColor: '#111111',
+  },
+  labels: {
+    gap: Spacing.one,
+  },
 });

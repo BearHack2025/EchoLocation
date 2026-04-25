@@ -4,6 +4,7 @@ import Foundation
 enum EchoLidarSessionError: LocalizedError {
   case unsupportedARKit
   case unsupportedDepth
+  case noCurrentFrame
 
   var errorDescription: String? {
     switch self {
@@ -11,6 +12,8 @@ enum EchoLidarSessionError: LocalizedError {
       return "ARKit world tracking is not supported on this device."
     case .unsupportedDepth:
       return "LiDAR scene depth is not supported on this device."
+    case .noCurrentFrame:
+      return "No AR frame is available yet. Start scanning and try again."
     }
   }
 }
@@ -19,6 +22,9 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   private let depthAnalyzer = DepthAnalyzer()
   private let speechController = SpeechController()
+  private let snapshotController = SnapshotController()
+  private let sceneLabeler = SceneLabeler()
+  private let sceneUnderstandingController = SceneUnderstandingController()
 
   private var sendEvent: ((String, [String: Any]) -> Void)?
   private var mode = "describe"
@@ -57,7 +63,23 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     mockTimer?.invalidate()
     mockTimer = nil
     arSession.pause()
+    depthAnalyzer.reset()
+    sceneUnderstandingController.reset()
     speechController.stop()
+  }
+
+  func captureSnapshot() throws -> [String: Any] {
+    let snapshot = try captureSnapshotResult()
+    return snapshot.payload
+  }
+
+  func captureAndLabelScene() throws -> [String: Any] {
+    let snapshot = try captureSnapshotResult()
+    let labels = try sceneLabeler.label(image: snapshot.image)
+    return [
+      "snapshot": snapshot.payload,
+      "labels": labels
+    ]
   }
 
   func disableMockMode() {
@@ -69,8 +91,9 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       return
     }
 
-    speechController.process(update: update, mode: mode)
-    sendEvent?("onEchoUpdate", update)
+    let enrichedUpdate = sceneUnderstandingController.enrich(update: update, frame: frame)
+    speechController.process(update: enrichedUpdate, mode: mode)
+    sendEvent?("onEchoUpdate", enrichedUpdate)
   }
 
   private func startMockEvents() {
@@ -93,6 +116,14 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       index = (index + 1) % sampleEvents.count
       self.sendEvent?("onEchoUpdate", sampleEvents[index])
     }
+  }
+
+  private func captureSnapshotResult() throws -> SnapshotResult {
+    guard let frame = arSession.currentFrame else {
+      throw EchoLidarSessionError.noCurrentFrame
+    }
+
+    return try snapshotController.capture(from: frame)
   }
 
   private func makePayload(

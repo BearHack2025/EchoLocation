@@ -117,4 +117,8 @@ final class DepthAnalyzer {
       "source": "arkit"
     ]
   }
+
+  func reset() {
+    meshClassifier.reset()
+  }
 }

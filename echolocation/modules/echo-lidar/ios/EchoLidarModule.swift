@@ -1,6 +1,17 @@
 import ARKit
 import ExpoModulesCore
 
+enum EchoLidarModuleError: LocalizedError {
+  case unavailable
+
+  var errorDescription: String? {
+    switch self {
+    case .unavailable:
+      return "EchoLidar module is unavailable."
+    }
+  }
+}
+
 public final class EchoLidarModule: Module {
   private let sessionController = EchoLidarSession()
   private let voiceCommandController = VoiceCommandController()
@@ -45,6 +56,26 @@ public final class EchoLidarModule: Module {
 
     AsyncFunction("stop") { [weak self] in
       self?.sessionController.stop()
+    }
+
+    AsyncFunction("captureSnapshot") { [weak self] () -> [String: Any] in
+      guard let self else {
+        throw EchoLidarModuleError.unavailable
+      }
+
+      return try await MainActor.run {
+        try self.sessionController.captureSnapshot()
+      }
+    }
+
+    AsyncFunction("captureAndLabelScene") { [weak self] () -> [String: Any] in
+      guard let self else {
+        throw EchoLidarModuleError.unavailable
+      }
+
+      return try await MainActor.run {
+        try self.sessionController.captureAndLabelScene()
+      }
     }
 
     AsyncFunction("startVoiceCommands") { [weak self] in

@@ -22,7 +22,7 @@ Pod::Spec.new do |s|
   s.author         = 'Echolocation Team'
   s.homepage       = 'https://expo.dev'
   s.platforms      = {
-    :ios => '15.1'
+    :ios => '15.5'
   }
   s.swift_version  = '5.4'
   s.source         = { git: 'https://github.com/expo/expo.git' }
@@ -31,5 +31,6 @@ Pod::Spec.new do |s|
   s.source_files = 'ios/**/*.{swift,h,m,mm}'
 
   s.dependency 'ExpoModulesCore'
+  s.dependency 'GoogleMLKit/ImageLabeling', '8.0.0'
   install_modules_dependencies(s)
 end
