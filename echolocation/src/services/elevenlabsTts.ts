@@ -16,7 +16,6 @@ export interface ElevenLabsTTSConfig {
 }
 
 export interface ElevenLabsTTSResponse {
-  audioBlob: Blob;
   audioUrl?: string;
 }
 
@@ -53,7 +52,7 @@ export const speak = async (
   const cacheKey = `${voiceId}:${text}`;
   const cachedUrl = cachedAudio.get(cacheKey);
   if (cachedUrl) {
-    return { audioUrl: cachedUrl, audioBlob: new Blob([], { type: 'audio/mp3' }) };
+    return { audioUrl: cachedUrl };
   }
 
   const startTime = Date.now();
@@ -92,7 +91,6 @@ export const speak = async (
     }
 
     const audioArrayBuffer = await response.arrayBuffer();
-    const audioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
     const audioBase64 = arrayBufferToBase64(audioArrayBuffer);
     const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
 
@@ -107,7 +105,7 @@ export const speak = async (
     const latency = Date.now() - startTime;
     logAudioSuccess('elevenlabs-tts', text, latency);
 
-    return { audioBlob, audioUrl };
+    return { audioUrl };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof ElevenLabsError) {
