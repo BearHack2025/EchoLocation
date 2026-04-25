@@ -2,13 +2,30 @@ import ARKit
 import ExpoModulesCore
 
 public final class EchoLidarModule: Module {
+  /// Weak reference so the preview view can find the live module instance
+  /// to attach its ARSCNView to the same ARSession that drives EchoUpdate events.
+  public static weak var current: EchoLidarModule?
+
   private let sessionController = EchoLidarSession()
   private let voiceCommandController = VoiceCommandController()
+
+  /// Exposed so EchoLidarPreviewView can attach to sharedARSession.
+  var session: EchoLidarSession { sessionController }
 
   public func definition() -> ModuleDefinition {
     Name("EchoLidar")
 
+    OnCreate { [weak self] in
+      EchoLidarModule.current = self
+    }
+
     Events("onEchoUpdate", "onVoiceCommand")
+
+    View(EchoLidarPreviewView.self) {
+      Prop("showHeatmap") { (view: EchoLidarPreviewView, value: Bool?) in
+        view.showHeatmap = value ?? true
+      }
+    }
 
     Function("isSupported") {
       ARWorldTrackingConfiguration.isSupported
