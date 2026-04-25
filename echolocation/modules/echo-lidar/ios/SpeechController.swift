@@ -19,6 +19,10 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     synthesizer.delegate = self
   }
 
+  private func requestSpeech(text: String, mode: String, onSpeechRequest: @escaping (String, String) -> Void) {
+    onSpeechRequest(text, mode)
+  }
+
   func process(update: [String: Any], mode: String, onSpeechRequest: @escaping (String, String) -> Void) {
     guard mode != "quiet" else { return }
 
