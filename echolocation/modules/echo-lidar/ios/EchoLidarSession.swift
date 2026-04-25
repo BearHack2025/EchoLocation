@@ -19,7 +19,9 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   let labelTrigger = GemmaLabelTrigger()
   private lazy var depthAnalyzer = DepthAnalyzer(labelTrigger: labelTrigger)
-  private let speechController = SpeechController()
+  /// Single shared instance — `EchoLidarModule` accesses via `session.speechController`.
+  /// Having two would mean two AVSpeechSynthesizer queues = overlapping voices.
+  let speechController = SpeechController()
 
   /// Read-only access to the underlying ARSession so a render-only view
   /// (e.g. ARSCNView) can attach without taking ownership of run/pause.

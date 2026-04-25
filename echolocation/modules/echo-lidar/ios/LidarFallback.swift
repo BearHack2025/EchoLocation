@@ -67,8 +67,8 @@ enum LidarFallback {
   }
 
   private static func formatMeters(_ m: Double) -> String {
-    if m < 1 { return "very close" }
-    if m < 2 { return String(format: "%.1f meters", m) }
-    return "\(Int(m.rounded())) meters"
+    let clamped = max(0.1, m)
+    if clamped < 10 { return String(format: "%.1f meters", clamped) }
+    return "\(Int(clamped.rounded())) meters"
   }
 }

@@ -9,10 +9,10 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   private var lastDirection = ""
   private var lastDistanceBucket = -1
 
-  // Minimum seconds between identical phrases
-  private let repeatInterval: TimeInterval = 3.0
-  // Minimum seconds between any speech
-  private let minInterval: TimeInterval = 1.0
+  /// Hard floor between any two always-on utterances (process path).
+  /// Voice-command path (`say()`) bypasses — those are user-requested.
+  /// Tunable: 4 s feels appropriate for blind users (avoids overwhelm).
+  private let alwaysOnCooldownSeconds: TimeInterval = 4.0
 
   /// When true, the always-on `process(update:mode:)` path becomes a no-op so
   /// the orchestrator's voice-command speech can play without overlap.
@@ -47,6 +47,13 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     guard !isReserved else { return }
     guard mode != "quiet" else { return }
 
+    // Hard cooldown: never speak more than once per `alwaysOnCooldownSeconds`
+    // on the always-on path. Blind users find rapid-fire utterances overwhelming.
+    let now = Date()
+    guard now.timeIntervalSince(lastSpokenAt) >= alwaysOnCooldownSeconds else {
+      return
+    }
+
     guard
       let distance = update["nearestDistanceMeters"] as? Double,
       let direction = update["direction"] as? String,
@@ -54,7 +61,7 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     else { return }
 
     if mode == "echo" {
-      // Echo mode: short directional cues only on significant change
+      // Echo mode: short directional cue only on significant change.
       let bucket = distanceBucket(distance)
       guard direction != lastDirection || bucket != lastDistanceBucket else { return }
       lastDirection = direction
@@ -63,19 +70,14 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
       return
     }
 
-    // Describe mode: full phrases, throttled
+    // Describe mode: speak whenever the scene meaningfully changed.
+    // Cooldown above bounds the rate; this gate just suppresses no-op utterances.
     let phrase = describePhrase(direction: direction, distance: distance, label: label)
-    let now = Date()
-    let sinceLast = now.timeIntervalSince(lastSpokenAt)
-
     let directionChanged = direction != lastDirection
     let bucketChanged = distanceBucket(distance) != lastDistanceBucket
+    let phraseChanged = phrase != lastPhrase
 
-    let shouldSpeak = directionChanged
-      || (bucketChanged && sinceLast >= minInterval)
-      || (phrase != lastPhrase && sinceLast >= repeatInterval)
-
-    guard shouldSpeak else { return }
+    guard directionChanged || bucketChanged || phraseChanged else { return }
 
     lastDirection = direction
     lastDistanceBucket = distanceBucket(distance)
@@ -111,23 +113,45 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
 
   private func shortPhrase(direction: String, distance: Double) -> String {
     let dir = direction == "center" ? "ahead" : direction
-    return "\(dir), \(formattedDistance(distance))"
+    let core = "\(dir), \(speakMeters(distance))"
+    if let advice = avoidanceAdvice(direction: direction, distance: distance) {
+      return "\(core), \(advice)"
+    }
+    return core
   }
 
   private func describePhrase(direction: String, distance: Double, label: String) -> String {
     let dir = direction == "center" ? "ahead" : "to your \(direction)"
-    let dist = formattedDistance(distance)
-    return "\(label) \(dir), \(dist)"
+    let core = "\(label) \(dir), \(speakMeters(distance))"
+    if let advice = avoidanceAdvice(direction: direction, distance: distance) {
+      return "\(core), \(advice)"
+    }
+    return core
   }
 
-  private func formattedDistance(_ meters: Double) -> String {
-    if meters < 1.0 {
-      return "very close"
-    } else if meters < 2.0 {
-      let rounded = (meters * 10).rounded() / 10
+  /// Always speak a numeric distance — never the legacy `"very close"`.
+  /// Floor at 0.1 m so we never read "0.0 meters" awkwardly.
+  /// Decimals under 10 m, integer at or above 10 m.
+  private func speakMeters(_ meters: Double) -> String {
+    let clamped = max(0.1, meters)
+    if clamped < 10 {
+      let rounded = (clamped * 10).rounded() / 10
       return "\(rounded) meters"
-    } else {
-      return "\(Int(meters.rounded())) meters"
+    }
+    return "\(Int(clamped.rounded())) meters"
+  }
+
+  /// Action verb the user can act on — only fires when there's a nearby threat
+  /// (within 2 m). Beyond that, the user has time; advice would be noise.
+  /// `unknown` direction → no advice (we can't honestly tell them where to go).
+  private func avoidanceAdvice(direction: String, distance: Double) -> String? {
+    guard distance < 2.0 else { return nil }
+    if distance < 0.5 { return "stop now" }
+    switch direction {
+    case "left":   return "step right"
+    case "right":  return "step left"
+    case "center": return distance < 1.0 ? "stop now" : "slow down"
+    default:       return nil
     }
   }
 

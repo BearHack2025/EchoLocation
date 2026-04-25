@@ -8,11 +8,14 @@ public final class EchoLidarModule: Module {
 
   private let sessionController = EchoLidarSession()
   private let voiceCommandController = VoiceCommandController()
-  private let speechController = SpeechController()
   private let gemma = GemmaInferenceController.shared
 
   /// Exposed so EchoLidarPreviewView + ARSnapshotCapture can attach to sharedARSession.
   var session: EchoLidarSession { sessionController }
+
+  /// Single shared SpeechController — see comment in EchoLidarSession.
+  /// Reservation/release/say/stop all hit the SAME AVSpeechSynthesizer queue.
+  private var speechController: SpeechController { sessionController.speechController }
 
   public func definition() -> ModuleDefinition {
     Name("EchoLidar")
