@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["EchoLidarModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.echolidar.EchoLidarModule"]
+  }
+}
