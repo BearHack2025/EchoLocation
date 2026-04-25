@@ -28,6 +28,16 @@ export type EchoSupportStatus = {
   supportsMeshClassification: boolean;
 };
 
+export type VoiceCommandName = 'ahead' | 'left' | 'right' | 'repeat';
+
+export type VoiceCommandEvent = {
+  command: VoiceCommandName;
+  transcript: string;
+  timestampMs: number;
+  source: 'speech';
+};
+
 export type EchoLidarModuleEvents = {
   onEchoUpdate: (event: EchoUpdate) => void;
+  onVoiceCommand: (event: VoiceCommandEvent) => void;
 };

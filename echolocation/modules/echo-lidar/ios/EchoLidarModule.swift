@@ -3,11 +3,12 @@ import ExpoModulesCore
 
 public final class EchoLidarModule: Module {
   private let sessionController = EchoLidarSession()
+  private let voiceCommandController = VoiceCommandController()
 
   public func definition() -> ModuleDefinition {
     Name("EchoLidar")
 
-    Events("onEchoUpdate")
+    Events("onEchoUpdate", "onVoiceCommand")
 
     Function("isSupported") {
       ARWorldTrackingConfiguration.isSupported
@@ -44,6 +45,22 @@ public final class EchoLidarModule: Module {
 
     AsyncFunction("stop") { [weak self] in
       self?.sessionController.stop()
+    }
+
+    AsyncFunction("startVoiceCommands") { [weak self] in
+      guard let self else {
+        return
+      }
+
+      try await self.voiceCommandController.startListening { payload in
+        self.sendEvent("onVoiceCommand", payload)
+      }
+    }
+
+    AsyncFunction("stopVoiceCommands") { [weak self] in
+      await MainActor.run {
+        self?.voiceCommandController.stopListening()
+      }
     }
   }
 }

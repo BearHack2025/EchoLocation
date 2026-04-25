@@ -9,6 +9,8 @@ type NativeEchoLidarModule = {
   getSupportStatus(): EchoSupportStatus;
   start(mode?: EchoMode): Promise<void>;
   stop(): Promise<void>;
+  startVoiceCommands(): Promise<void>;
+  stopVoiceCommands(): Promise<void>;
 };
 
 // requireNativeModule throws in Expo Go / simulator without a dev build.
@@ -24,6 +26,8 @@ try {
     getSupportStatus: () => ({ isARSupported: false, supportsDepth: false, supportsMeshClassification: false }),
     start: async () => { throw new Error('EchoLidar native module not available — use a development build'); },
     stop: async () => {},
+    startVoiceCommands: async () => { throw new Error('Voice commands require a development build on iOS'); },
+    stopVoiceCommands: async () => {},
   };
 }
 

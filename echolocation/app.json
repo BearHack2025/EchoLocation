@@ -9,7 +9,12 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.echolocation"
+      "bundleIdentifier": "com.anonymous.echolocation",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Echolocation uses the camera with LiDAR to detect obstacles and describe your surroundings.",
+        "NSMicrophoneUsageDescription": "Echolocation uses the microphone to listen for voice commands like describing what is ahead.",
+        "NSSpeechRecognitionUsageDescription": "Echolocation uses speech recognition to understand voice commands and trigger scene descriptions."
+      }
     },
     "android": {
       "adaptiveIcon": {

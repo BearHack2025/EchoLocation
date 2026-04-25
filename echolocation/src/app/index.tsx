@@ -7,7 +7,7 @@ import { Spacing } from '@/constants/theme';
 import { useEchoLidar } from '@/hooks/use-echo-lidar';
 
 export default function HomeScreen() {
-  const { latest, running, error, isSupported, supportsDepth, start, stop } = useEchoLidar();
+  const { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop } = useEchoLidar();
 
   return (
     <ThemedView style={styles.container}>
@@ -19,6 +19,7 @@ export default function HomeScreen() {
           <Row label="ARKit supported" value={isSupported ? '✓' : '✗'} />
           <Row label="LiDAR depth" value={supportsDepth ? '✓' : '✗'} />
           <Row label="Status" value={running ? 'running' : 'stopped'} />
+          <Row label="Voice" value={listening ? 'listening' : 'off'} />
         </ThemedView>
 
         {latest ? (
@@ -36,6 +37,11 @@ export default function HomeScreen() {
             </ThemedText>
           </ThemedView>
         )}
+
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <Row label="Last command" value={latestCommand?.command ?? '—'} />
+          <Row label="Transcript" value={latestCommand?.transcript ?? '—'} />
+        </ThemedView>
 
         {error ? (
           <ThemedText type="small" style={[styles.center, styles.error]}>{error}</ThemedText>
