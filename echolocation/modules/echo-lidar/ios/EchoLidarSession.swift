@@ -18,6 +18,8 @@ enum EchoLidarSessionError: LocalizedError {
 final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   private let depthAnalyzer = DepthAnalyzer()
+  private let objectTracker = ObjectAnchorTracker()
+  private lazy var mlkitDetector: MLKitObjectDetector = MLKitObjectDetector()
   var speechController: SpeechController?
 
   var sharedARSession: ARSession { arSession }
@@ -63,6 +65,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     mockTimer?.invalidate()
     mockTimer = nil
     arSession.pause()
+    objectTracker.reset()
     speechController?.stop()
     speechController = nil
   }
@@ -72,7 +75,14 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   }
 
   func session(_ session: ARSession, didUpdate frame: ARFrame) {
-    guard let update = depthAnalyzer.analyze(frame: frame, mode: mode) else {
+    objectTracker.tick()
+
+    _ = mlkitDetector.detectIfReady(frame: frame) { [weak self] detections in
+      guard let self else { return }
+      self.objectTracker.ingest(detections)
+    }
+
+    guard let update = depthAnalyzer.analyze(frame: frame, mode: mode, tracker: objectTracker) else {
       return
     }
 

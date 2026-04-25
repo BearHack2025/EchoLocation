@@ -1,11 +1,12 @@
 import ARKit
 import CoreVideo
 import Foundation
+import simd
 
 final class DepthAnalyzer {
   private let meshClassifier = MeshClassifier()
 
-  func analyze(frame: ARFrame, mode: String) -> [String: Any]? {
+  func analyze(frame: ARFrame, mode: String, tracker: ObjectAnchorTracker? = nil) -> [String: Any]? {
     guard let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth else {
       return nil
     }
@@ -42,6 +43,8 @@ final class DepthAnalyzer {
     var bestDirection = "unknown"
     var bestDistance: Float?
     var bestConfidence = 0.0
+    var bestNormX: Float = 0.5
+    var bestNormY: Float = 0.5
 
     let zones = [
       ("left", 0, zoneWidth),
@@ -54,7 +57,7 @@ final class DepthAnalyzer {
         continue
       }
 
-      var samples: [Float] = []
+      var samples: [(Float, Int, Int)] = []
       var confidenceHits = 0
       var totalHits = 0
 
@@ -81,7 +84,7 @@ final class DepthAnalyzer {
           }
 
           confidenceHits += 1
-          samples.append(depthValue)
+          samples.append((depthValue, x, y))
         }
       }
 
@@ -89,15 +92,17 @@ final class DepthAnalyzer {
         continue
       }
 
-      samples.sort()
+      samples.sort { $0.0 < $1.0 }
       let stableIndex = min(samples.count - 1, max(0, samples.count / 5))
-      let stableDistance = samples[stableIndex]
+      let (stableDistance, stableX, stableY) = samples[stableIndex]
       let zoneConfidence = Double(confidenceHits) / Double(totalHits)
 
       if bestDistance == nil || stableDistance < bestDistance! {
         bestDistance = stableDistance
         bestDirection = direction
         bestConfidence = zoneConfidence
+        bestNormX = Float(stableX) / Float(width)
+        bestNormY = Float(stableY) / Float(height)
       }
     }
 
@@ -105,7 +110,21 @@ final class DepthAnalyzer {
       return nil
     }
 
-    let label = meshClassifier.classify(frame: frame, direction: bestDirection, distance: bestDistance)
+    var label = meshClassifier.classify(frame: frame, direction: bestDirection, distance: bestDistance)
+    var labelSource = "arkit-mesh"
+
+    if let tracker {
+      let worldPoint = unproject(
+        camera: frame.camera,
+        normX: bestNormX,
+        normY: bestNormY,
+        depth: bestDistance
+      )
+      if let match = tracker.bestLabel(near: worldPoint) {
+        label = match.label
+        labelSource = "mlkit"
+      }
+    }
 
     return [
       "nearestDistanceMeters": Double(bestDistance),
@@ -114,7 +133,34 @@ final class DepthAnalyzer {
       "confidence": bestConfidence,
       "mode": mode,
       "timestampMs": Int(Date().timeIntervalSince1970 * 1000),
-      "source": "arkit"
+      "source": "arkit",
+      "labelSource": labelSource
     ]
+  }
+
+  private func unproject(
+    camera: ARCamera,
+    normX: Float,
+    normY: Float,
+    depth: Float
+  ) -> SIMD3<Float> {
+    let cameraTransform = camera.transform
+    let intrinsics = camera.intrinsics
+    let imageRes = camera.imageResolution
+    let fx = intrinsics[0][0]
+    let fy = intrinsics[1][1]
+    let cx = intrinsics[2][0]
+    let cy = intrinsics[2][1]
+
+    let pxX = normX * Float(imageRes.width)
+    let pxY = normY * Float(imageRes.height)
+
+    let xCam = (pxX - cx) / fx * depth
+    let yCam = (pxY - cy) / fy * depth
+    let zCam = -depth
+
+    let camPoint = SIMD4<Float>(xCam, yCam, zCam, 1)
+    let worldPoint = cameraTransform * camPoint
+    return SIMD3<Float>(worldPoint.x, worldPoint.y, worldPoint.z)
   }
 }

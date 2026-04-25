@@ -31,5 +31,6 @@ Pod::Spec.new do |s|
   s.source_files = 'ios/**/*.{swift,h,m,mm}'
 
   s.dependency 'ExpoModulesCore'
+  s.dependency 'GoogleMLKit/ObjectDetection', '~> 6.0.0'
   install_modules_dependencies(s)
 end
