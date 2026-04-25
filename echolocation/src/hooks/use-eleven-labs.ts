@@ -31,8 +31,19 @@ export function useElevenLabs() {
   const [error, setError] = useState<string | null>(null);
 
   const playerRef = useRef<AudioPlayer | null>(null);
+  const speechGenRef = useRef(0);
 
   const isConfigured = isTtsConfigured() && isSttConfigured();
+
+  const stopAllPlayback = useCallback(() => {
+    speechGenRef.current += 1;
+    if (playerRef.current) {
+      try { playerRef.current.pause(); } catch {}
+      try { playerRef.current.remove(); } catch {}
+      playerRef.current = null;
+    }
+    Speech.stop();
+  }, []);
 
   const speakText = useCallback(
     async (text: string, config?: Partial<ElevenLabsTTSConfig>): Promise<boolean> => {
@@ -41,16 +52,14 @@ export function useElevenLabs() {
         return false;
       }
 
+      stopAllPlayback();
+      const myGen = speechGenRef.current;
       setError(null);
       setLastSpokenText(text);
 
       try {
-        if (playerRef.current) {
-          playerRef.current.remove();
-          playerRef.current = null;
-        }
-
         const result = await speak(text, config);
+        if (myGen !== speechGenRef.current) return false;
         if (result.audioUrl === undefined) {
           setError('No audio URL returned from ElevenLabs');
           return false;
@@ -60,7 +69,7 @@ export function useElevenLabs() {
         playerRef.current = player;
 
         player.addListener('playbackStatusUpdate', (status) => {
-          if (status.isLoaded && status.didJustFinish) {
+          if (status.isLoaded && status.didJustFinish && myGen === speechGenRef.current) {
             setIsPlaying(false);
           }
         });
@@ -69,6 +78,7 @@ export function useElevenLabs() {
         setIsPlaying(true);
         return true;
       } catch (e) {
+        if (myGen !== speechGenRef.current) return false;
         const message = e instanceof Error ? e.message : String(e);
         const elevenError = e as ElevenLabsError;
         if (elevenError.statusCode) {
@@ -79,31 +89,25 @@ export function useElevenLabs() {
         return false;
       }
     },
-    []
+    [stopAllPlayback]
   );
 
   const stopSpeaking = useCallback(async () => {
-    if (playerRef.current) {
-      playerRef.current.pause();
-      playerRef.current.remove();
-      playerRef.current = null;
-    }
+    stopAllPlayback();
     setIsPlaying(false);
-  }, []);
+  }, [stopAllPlayback]);
 
   const speakWithFallback = useCallback(
     async (text: string, config?: Partial<ElevenLabsTTSConfig>): Promise<boolean> => {
+      stopAllPlayback();
+      const myGen = speechGenRef.current;
       setError(null);
       setLastSpokenText(text);
 
       if (isTtsConfigured()) {
         try {
-          if (playerRef.current) {
-            playerRef.current.remove();
-            playerRef.current = null;
-          }
-
           const result = await speak(text, config);
+          if (myGen !== speechGenRef.current) return false;
           if (result.audioUrl === undefined) {
             throw new Error('No audio URL returned from ElevenLabs');
           }
@@ -112,7 +116,7 @@ export function useElevenLabs() {
           playerRef.current = player;
 
           player.addListener('playbackStatusUpdate', (status) => {
-            if (status.isLoaded && status.didJustFinish) {
+            if (status.isLoaded && status.didJustFinish && myGen === speechGenRef.current) {
               setIsPlaying(false);
             }
           });
@@ -121,6 +125,7 @@ export function useElevenLabs() {
           setIsPlaying(true);
           return true;
         } catch (e) {
+          if (myGen !== speechGenRef.current) return false;
           console.warn('ElevenLabs TTS failed, falling back to expo-speech:', e);
         }
       }
@@ -130,31 +135,32 @@ export function useElevenLabs() {
           language: 'en-US',
           pitch: 1.0,
           rate: 0.9,
-          onStart: () => setIsPlaying(true),
-          onDone: () => setIsPlaying(false),
+          onStart: () => {
+            if (myGen === speechGenRef.current) setIsPlaying(true);
+          },
+          onDone: () => {
+            if (myGen === speechGenRef.current) setIsPlaying(false);
+          },
           onError: (e) => {
+            if (myGen !== speechGenRef.current) return;
             setError(`Speech fallback failed: ${e.message}`);
             setIsPlaying(false);
           },
         });
       } catch (e) {
+        if (myGen !== speechGenRef.current) return false;
         setError(`expo-speech failed: ${e instanceof Error ? e.message : String(e)}`);
         setIsPlaying(false);
       }
       return true;
     },
-    []
+    [stopAllPlayback]
   );
 
   const stopSpeakingAll = useCallback(async () => {
-    if (playerRef.current) {
-      playerRef.current.pause();
-      playerRef.current.remove();
-      playerRef.current = null;
-    }
-    Speech.stop();
+    stopAllPlayback();
     setIsPlaying(false);
-  }, []);
+  }, [stopAllPlayback]);
 
   const transcribeAudio = useCallback(
     async (

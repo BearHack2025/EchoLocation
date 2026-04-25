@@ -311,9 +311,8 @@ export const transcribe = async (
   const timeoutId = setTimeout(() => controller.abort(), STT_TIMEOUT_MS);
 
   try {
-    const arrayBuffer = await audioBlob.arrayBuffer();
     const formData = new FormData();
-    formData.append('file', new Blob([arrayBuffer]), 'audio.wav');
+    formData.append('file', audioBlob, 'audio.wav');
     formData.append('model_id', modelId);
 
     const response = await fetch(`${ELEVENLABS_HTTP_BASE}/scribe`, {
@@ -352,25 +351,60 @@ export const transcribe = async (
   }
 };
 
-export const transcribeFromArrayBuffer = async (
-  audioData: ArrayBuffer,
-  config?: Partial<ElevenLabsSTTConfig>
-): Promise<ElevenLabsSTTResponse> => {
-  const blob = new Blob([audioData], { type: 'audio/wav' });
-  return transcribe(blob, config);
-};
-
 export const transcribeFromBase64 = async (
   base64Audio: string,
   config?: Partial<ElevenLabsSTTConfig>
 ): Promise<ElevenLabsSTTResponse> => {
-  const binaryString = atob(base64Audio);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  const apiKey = config?.apiKey || getApiKey();
+  if (!apiKey) {
+    throw new ElevenLabsSTTError('API key not configured');
   }
-  const blob = new Blob([bytes], { type: 'audio/wav' });
-  return transcribe(blob, config);
+  const modelId = config?.modelId || DEFAULT_MODEL_ID;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), STT_TIMEOUT_MS);
+
+  try {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: `data:audio/wav;base64,${base64Audio}`,
+      name: 'audio.wav',
+      type: 'audio/wav',
+    } as any);
+    formData.append('model_id', modelId);
+
+    const response = await fetch(`${ELEVENLABS_HTTP_BASE}/scribe`, {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey },
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new ElevenLabsSTTError(`API error: ${error}`, response.status);
+    }
+    const data = await response.json();
+    return { text: data.text || '', confidence: data.confidence || 0 };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof ElevenLabsSTTError) throw error;
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    throw new ElevenLabsSTTError(`Request failed: ${message}`);
+  }
+};
+
+export const transcribeFromArrayBuffer = async (
+  audioData: ArrayBuffer,
+  config?: Partial<ElevenLabsSTTConfig>
+): Promise<ElevenLabsSTTResponse> => {
+  const bytes = new Uint8Array(audioData);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return transcribeFromBase64(btoa(binary), config);
 };
 
 function int16ArrayToBase64(audioChunk: Int16Array): string {
