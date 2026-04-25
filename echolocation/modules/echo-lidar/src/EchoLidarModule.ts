@@ -7,12 +7,13 @@ type NativeEchoLidarModule = {
   supportsDepth(): boolean;
   supportsMeshClassification(): boolean;
   getSupportStatus(): EchoSupportStatus;
-  start(mode?: EchoMode): Promise<void>;
+  start(mode?: EchoMode, useBuiltin?: boolean): Promise<void>;
   stop(): Promise<void>;
   startVoiceCommands(): Promise<void>;
   stopVoiceCommands(): Promise<void>;
   onSpeechReady(audioUrl: string, completion: (success: boolean, error?: string) => void): Promise<void>;
   onSpeechFailed(error?: string): Promise<void>;
+  setBuiltinSpeechEnabled(enabled: boolean): Promise<void>;
 };
 
 // requireNativeModule throws in Expo Go / simulator without a dev build.
@@ -32,6 +33,7 @@ try {
     stopVoiceCommands: async () => {},
     onSpeechReady: async () => {},
     onSpeechFailed: async () => {},
+    setBuiltinSpeechEnabled: async () => {},
   };
 }
 

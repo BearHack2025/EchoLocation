@@ -26,11 +26,14 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   private var mode = "describe"
   private var mockTimer: Timer?
   private var useMockEvents = false
+  private var useBuiltinSpeech = true
 
-  func start(mode: String, sendEvent: @escaping (String, [String: Any]) -> Void) throws {
+  func start(mode: String, sendEvent: @escaping (String, [String: Any]) -> Void, useBuiltin: Bool = true) throws {
     self.mode = mode
     self.sendEvent = sendEvent
+    self.useBuiltinSpeech = useBuiltin
     self.speechController = SpeechController()
+    self.speechController?.configureBuiltinSpeech(useBuiltin: useBuiltin)
 
     guard ARWorldTrackingConfiguration.isSupported else {
       throw EchoLidarSessionError.unsupportedARKit

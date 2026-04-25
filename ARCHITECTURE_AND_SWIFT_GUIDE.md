@@ -492,7 +492,7 @@ The standard to keep applying is:
 
 ## ElevenLabs Integration
 
-This project uses ElevenLabs for premium voice output (TTS) with different voices for Echo and Describe modes, plus fallback to builtin iOS TTS when unavailable.
+This project uses ElevenLabs for premium voice output (TTS) with different voices for Echo and Describe modes. For continuous LiDAR feedback, the app uses built-in iOS TTS to reduce API usage.
 
 ### Architecture
 
@@ -503,21 +503,24 @@ This project uses ElevenLabs for premium voice output (TTS) with different voice
 │  │              SpeechController (Coordinator)                  ││
 │  │  • Throttles/debounces speech                                 ││
 │  │  • Formats text into phrases                                 ││
-│  │  • Routes speech to JS layer                                 ││
+│  │  • useBuiltinSpeech flag controls routing:                   ││
+│  │    - true: AVSpeechSynthesizer (built-in, zero cost)         ││
+│  │    - false: JS layer for ElevenLabs                          ││
 │  └─────────────────────────────────────────────────────────────┘│
-│                              ↓ onSpeechRequest event             │
+│                              ↓ onSpeechRequest event (useBuiltin=false)
 │                    JS Layer (Expo)                              │
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │              audio-service.ts (Voice Router)                 ││
 │  │  • speakWithFallback(text, mode)                              ││
 │  │  • Voice config by mode (echo vs describe)                    ││
 │  │  • Timeout handling (5s)                                     ││
+│  │  • preferBuiltinForContinuous config option                  ││
 │  └─────────────────────────────────────────────────────────────┘│
 │                              ↓                                   │
 │  ┌──────────────────────────────┐  ┌──────────────────────────┐│
-│  │  ElevenLabs TTS (Primary)   │  │  Builtin iOS TTS         ││
-│  │  Echo: Rachel voice         │  │  (Fallback)              ││
-│  │  Describe: Arnold voice    │  │                          ││
+│  │  ElevenLabs TTS (Commands)  │  │  Builtin iOS TTS         ││
+│  │  Echo: Rachel voice         │  │  (Continuous feedback)   ││
+│  │  Describe: Arnold voice     │  │  AVSpeechSynthesizer     ││
 │  └──────────────────────────────┘  └──────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -534,12 +537,13 @@ This project uses ElevenLabs for premium voice output (TTS) with different voice
 | File | Purpose |
 |------|---------|
 | `src/services/audio-logger.ts` | Structured logging to console |
-| `src/services/audio-service.ts` | Voice router with fallback logic |
+| `src/services/audio-service.ts` | Voice router with fallback logic, config helpers |
 | `src/services/elevenlabsTts.ts` | ElevenLabs TTS API integration |
 | `src/services/elevenlabsStt.ts` | ElevenLabs STT API integration |
-| `src/hooks/use-echo-lidar.ts` | Speech request handler via event listener |
-| `modules/echo-lidar/ios/SpeechController.swift` | Swift speech coordinator with JS bridge |
-| `modules/echo-lidar/ios/EchoLidarModule.swift` | Native module with onSpeechReady/Failed |
+| `src/hooks/use-echo-lidar.ts` | Speech request handler, hybrid TTS support |
+| `modules/echo-lidar/ios/SpeechController.swift` | Swift speech coordinator, built-in TTS routing |
+| `modules/echo-lidar/ios/EchoLidarModule.swift` | Native module with TTS config functions |
+| `modules/echo-lidar/ios/EchoLidarSession.swift` | AR session with TTS mode configuration |
 | `modules/echo-lidar/src/EchoLidarModule.ts` | JS native module wrapper |
 
 ### API Key Configuration
@@ -574,12 +578,22 @@ const audioUrl = await speakWithFallback('Object detected: chair, 2 meters ahead
 
 ### Swift-JS Bridge
 
-Speech requests flow through events:
+Speech requests flow through events with two modes:
 
+**Mode 1: Built-in TTS (useBuiltinSpeech=true)**
+- Swift handles speech directly via AVSpeechSynthesizer
+- No JS bridge calls, no ElevenLabs API usage
+- Used for continuous LiDAR feedback
+
+**Mode 2: ElevenLabs (useBuiltinSpeech=false)**
 1. **Swift → JS**: `onSpeechRequest` event with `{ text, mode }`
 2. **JS → Swift**: `onSpeechReady(audioUrl)` or `onSpeechFailed(error)`
+3. Swift plays the audio via AVAudioPlayer
 
-Fallback triggers builtin iOS `AVSpeechSynthesizer` when:
+**Default behavior**: `useBuiltinSpeech=true` (uses built-in TTS by default)
+
+**Fallback triggers**: Builtin iOS `AVSpeechSynthesizer` when:
+- `useBuiltinSpeech=true` (always uses builtin)
 - ElevenLabs API is not configured
 - Network timeout (>5 seconds)
 - API returns error
@@ -590,3 +604,92 @@ Fallback triggers builtin iOS `AVSpeechSynthesizer` when:
 - Do not stream audio continuously (cost)
 - Do not use ElevenLabs for real-time obstacle warnings without fallback (latency/connectivity)
 - Do not commit API keys to version control
+- Do not disable built-in TTS for continuous feedback (unnecessary API costs)
+
+## Hybrid TTS Strategy
+
+To reduce ElevenLabs API usage while maintaining premium voice quality for important interactions, the app uses a hybrid approach:
+
+### Strategy
+
+| Context | TTS Engine | ElevenLabs Calls |
+|---------|------------|------------------|
+| **LiDAR continuous feedback** | Built-in iOS (AVSpeechSynthesizer) | **Zero** |
+| **Voice commands** | ElevenLabs (premium voice) | Per command |
+| **Announcements** | ElevenLabs (on-demand) | As requested |
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    EchoLidarSession (Swift)                     │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              SpeechController (Coordinator)                  ││
+│  │  • Throttles/debounces speech                                 ││
+│  │  • Formats text into phrases                                 ││
+│  │  • useBuiltinSpeech flag controls routing:                   ││
+│  │    - true: AVSpeechSynthesizer (free, local)                 ││
+│  │    - false: JS layer for ElevenLabs                          ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                              ↓ (when useBuiltin=false)          │
+│                    JS Layer (Expo)                              │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              audio-service.ts (Voice Router)                 ││
+│  │  • speakWithFallback(text, mode)                              ││
+│  │  • ElevenLabs for voice commands/announcements               ││
+│  │  • Builtin fallback for non-critical speech                  ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration Options
+
+**In Swift (EchoLidarModule.swift):**
+
+- `setBuiltinSpeechEnabled(enabled: Bool)` - Enable/disable built-in TTS
+- `start(mode, useBuiltin)` - Start session with TTS preference
+
+**In TypeScript (use-echo-lidar.ts):**
+
+```typescript
+// Use built-in for LiDAR (default - saves ElevenLabs credits)
+const { start, speakCommand } = useEchoLidar();
+await start('describe', true);  // true = use built-in TTS
+
+// Voice commands can still use ElevenLabs
+await speakCommand("What is my battery level?");
+
+// Use premium voice for everything
+await start('describe', false);  // false = use ElevenLabs
+```
+
+**In audio-service.ts:**
+
+```typescript
+configureAudioService({
+  preferBuiltinForContinuous: true,  // Default: true
+  useElevenLabs: true,               // Default: true
+  useFallback: true                  // Default: true
+});
+
+// Check if builtin should be used
+shouldUseBuiltinForContinuous();  // Returns true/false
+shouldUseElevenLabs('continuous');  // Returns false if preferBuiltinForContinuous
+shouldUseElevenLabs('command');      // Returns true if configured
+```
+
+### Built-in Speech Parameters
+
+SpeechController configures AVSpeechSynthesizer with:
+
+- **Rate**: 0.5 (moderate speed, clear articulation)
+- **Pitch**: 1.0 (natural)
+- **Voice**: en-US
+- **Audio Session**: `.playback` mode with `.duckOthers` and `.interruptSpokenAudioAndMixWithOthers`
+
+### Benefits
+
+- **90%+ reduction** in ElevenLabs TTS calls during continuous LiDAR operation
+- No change in voice quality for voice commands (still uses ElevenLabs)
+- Immediate speech playback (no network latency)
+- Works offline (built-in TTS doesn't require internet)

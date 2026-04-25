@@ -38,11 +38,13 @@ const SPEECH_TIMEOUT_MS = 5000;
 export interface AudioServiceConfig {
   useElevenLabs?: boolean;
   useFallback?: boolean;
+  preferBuiltinForContinuous?: boolean;
 }
 
 const defaultConfig: AudioServiceConfig = {
   useElevenLabs: true,
   useFallback: true,
+  preferBuiltinForContinuous: true,
 };
 
 let currentConfig: AudioServiceConfig = { ...defaultConfig };
@@ -53,6 +55,22 @@ export const configureAudioService = (config: Partial<AudioServiceConfig>): void
 
 export const getAudioServiceConfig = (): AudioServiceConfig => {
   return { ...currentConfig };
+};
+
+export const shouldUseBuiltinForContinuous = (): boolean => {
+  return currentConfig.preferBuiltinForContinuous ?? true;
+};
+
+export const shouldUseElevenLabs = (context: 'continuous' | 'command' | 'announcement' = 'continuous'): boolean => {
+  if (!currentConfig.useElevenLabs || !isElevenTtsConfigured()) {
+    return false;
+  }
+
+  if (currentConfig.preferBuiltinForContinuous && context === 'continuous') {
+    return false;
+  }
+
+  return true;
 };
 
 export const speak = async (

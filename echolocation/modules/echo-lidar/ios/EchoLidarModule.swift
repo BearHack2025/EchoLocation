@@ -9,6 +9,7 @@ public final class EchoLidarModule: Module {
   private let voiceCommandController = VoiceCommandController()
   private var speechCompletionHandler: ((Bool, String?) -> Void)?
   private var audioPlayer: AVAudioPlayer?
+  private var useBuiltinSpeech: Bool = true
 
   var session: EchoLidarSession { sessionController }
 
@@ -47,16 +48,25 @@ public final class EchoLidarModule: Module {
       ]
     }
 
-    AsyncFunction("start") { [weak self] (mode: String?) in
+    AsyncFunction("setBuiltinSpeechEnabled") { [weak self] (enabled: Bool) in
+      self?.useBuiltinSpeech = enabled
+      self?.sessionController.speechController?.configureBuiltinSpeech(useBuiltin: enabled)
+    }
+
+    AsyncFunction("start") { [weak self] (mode: String?, useBuiltin: Bool?) in
       guard let self else {
         return
       }
+
+      let useBuiltin = useBuiltin ?? self.useBuiltinSpeech
+      self.useBuiltinSpeech = useBuiltin
 
       try self.sessionController.start(
         mode: mode ?? "describe",
         sendEvent: { name, payload in
           self.sendEvent(name, payload)
-        }
+        },
+        useBuiltin: useBuiltin
       )
     }
 

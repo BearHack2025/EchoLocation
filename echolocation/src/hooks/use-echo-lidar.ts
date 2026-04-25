@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
 import type { EchoUpdate, VoiceCommandEvent } from 'echo-lidar';
 import { speakWithFallback, type SpeechMode } from '@/services/audio-service';
+import * as Speech from 'expo-speech';
 
 export type { EchoUpdate };
 
@@ -12,6 +13,7 @@ export function useEchoLidar() {
   const [running, setRunning] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [useBuiltin, setUseBuiltin] = useState(true);
 
   const isSupported = EchoLidarModule.isSupported();
   const supportsDepth = EchoLidarModule.supportsDepth();
@@ -39,10 +41,11 @@ export function useEchoLidar() {
     }
   }, []);
 
-  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe') => {
+  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe', useBuiltinSpeech: boolean = true) => {
     setError(null);
+    setUseBuiltin(useBuiltinSpeech);
     try {
-      await EchoLidarModule.start(mode);
+      await EchoLidarModule.start(mode, useBuiltinSpeech);
       setRunning(true);
       try {
         await EchoLidarModule.startVoiceCommands();
@@ -63,6 +66,22 @@ export function useEchoLidar() {
     setRunning(false);
   };
 
+  const speakCommand = useCallback(async (text: string): Promise<boolean> => {
+    try {
+      const audioUrl = await speakWithFallback(text, 'describe');
+      if (audioUrl === 'fallback') {
+        await Speech.speak(text, { language: 'en-US', rate: 0.9 });
+        return true;
+      }
+      await EchoLidarModule.onSpeechReady(audioUrl, () => {});
+      return true;
+    } catch (e) {
+      console.warn('[Audio] Voice command TTS failed:', e);
+      await Speech.speak(text, { language: 'en-US', rate: 0.9 });
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     const echoSub = EchoLidarEmitter.addListener('onEchoUpdate', (event) => {
       setLatest(event);
@@ -72,14 +91,20 @@ export function useEchoLidar() {
       setLatestCommand(event);
     });
 
-    const speechSub = EchoLidarEmitter.addListener('onSpeechRequest', handleSpeechRequest);
+    if (!useBuiltin) {
+      const speechSub = EchoLidarEmitter.addListener('onSpeechRequest', handleSpeechRequest);
+      return () => {
+        echoSub.remove();
+        voiceSub.remove();
+        speechSub.remove();
+      };
+    }
 
     return () => {
       echoSub.remove();
       voiceSub.remove();
-      speechSub.remove();
     };
-  }, [handleSpeechRequest]);
+  }, [handleSpeechRequest, useBuiltin]);
 
-  return { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop };
+  return { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop, speakCommand, useBuiltin };
 }

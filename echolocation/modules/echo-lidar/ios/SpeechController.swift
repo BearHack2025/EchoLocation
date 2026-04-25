@@ -14,13 +14,53 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   private let repeatInterval: TimeInterval = 3.0
   private let minInterval: TimeInterval = 1.0
 
+  private var useBuiltinSpeech: Bool = true
+  private var speechRate: Float = 0.5
+  private var speechPitch: Float = 1.0
+  private var speechVoice: String = "en-US"
+
   override init() {
     super.init()
     synthesizer.delegate = self
   }
 
+  func configureBuiltinSpeech(useBuiltin: Bool, rate: Float = 0.5, pitch: Float = 1.0, voice: String = "en-US") {
+    useBuiltinSpeech = useBuiltin
+    speechRate = rate
+    speechPitch = pitch
+    speechVoice = voice
+  }
+
   private func requestSpeech(text: String, mode: String, onSpeechRequest: @escaping (String, String) -> Void) {
-    onSpeechRequest(text, mode)
+    if useBuiltinSpeech {
+      speakBuiltin(text: text, mode: mode)
+    } else {
+      onSpeechRequest(text, mode)
+    }
+  }
+
+  private func speakBuiltin(text: String, mode: String) {
+    let utterance = AVSpeechUtterance(string: text)
+    utterance.rate = speechRate
+    utterance.pitchMultiplier = speechPitch
+    utterance.voice = AVSpeechSynthesisVoice(language: speechVoice)
+    utterance.preUtteranceDelay = 0.05
+    utterance.postUtteranceDelay = 0.05
+
+    do {
+      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
+      try AVAudioSession.sharedInstance().setActive(true)
+    } catch {
+      print("[SpeechController] Audio session error: \(error.localizedDescription)")
+    }
+
+    lastPhrase = text
+    lastSpokenAt = Date()
+    synthesizer.speak(utterance)
+  }
+
+  func speakBuiltinText(_ text: String, completion: ((Bool, String?) -> Void)? = nil) {
+    speakBuiltin(text: text, mode: "direct")
   }
 
   func process(update: [String: Any], mode: String, onSpeechRequest: @escaping (String, String) -> Void) {
@@ -69,6 +109,12 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     lastDirection = ""
     lastDistanceBucket = -1
     pendingCompletion = nil
+
+    do {
+      try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    } catch {
+      print("[SpeechController] Audio session deactivation error: \(error.localizedDescription)")
+    }
   }
 
   func onAudioReady(audioUrl: String, completion: @escaping (Bool, String?) -> Void) {
