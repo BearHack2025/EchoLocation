@@ -8,6 +8,12 @@ This document explains:
 - the one-page architecture for the app
 - the file-by-file breakdown of what to build first
 
+This project should follow a simplicity-first rule:
+
+- use existing abstractions if they already solve the problem
+- avoid custom infrastructure unless the platform forces it
+- keep the Swift layer as small as possible
+
 The goal is to make the native iOS part feel manageable. You do not need to build the whole app in Swift. You only need Swift for the pieces that `React Native` cannot do well, mainly `ARKit`, LiDAR depth access, and native event emission.
 
 ## Do We Need Swift?
@@ -30,6 +36,8 @@ So the correct mental model is:
 
 - `React Native` is the app shell
 - `Swift` is the sensing engine
+
+The goal is not to write a lot of Swift. The goal is to write the smallest possible Swift layer that unlocks `ARKit`.
 
 ## Smallest Amount Of Swift You Need
 
@@ -450,6 +458,7 @@ Avoid these in the first version:
 - cloud AI in the real-time loop
 - arbitrary object recognition as a dependency for the MVP
 - Android support
+- custom infrastructure that duplicates existing SDK behavior
 
 These will add complexity much faster than they add demo value.
 
@@ -466,3 +475,10 @@ You need:
 Everything else can stay in `React Native`.
 
 That is the cleanest and lowest-risk way to build this app.
+
+The standard to keep applying is:
+
+- if Apple already provides it, use Apple
+- if Expo already abstracts it, use Expo
+- if a stable SDK already solves it, use that
+- only write custom logic for the narrow gap in the middle

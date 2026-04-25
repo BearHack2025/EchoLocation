@@ -6,6 +6,26 @@ Build an iOS-only accessibility prototype that uses LiDAR to estimate nearby obs
 
 The hackathon target is not full navigation. The target is a stable short-range awareness demo.
 
+## Simplicity Rule
+
+Use the highest-level existing abstraction that still gives you the required control.
+
+Preference order:
+
+1. Apple framework
+2. Expo abstraction
+3. well-supported third-party SDK
+4. small custom native code
+5. custom AI or infrastructure
+
+Apply that rule everywhere:
+
+- use `ARKit` for depth and coarse labels
+- use `AVSpeechSynthesizer` for speech first
+- use `Expo Modules API` for the bridge
+- use `Google ML Kit` before custom vision models
+- do not add `Gemma` or `ElevenLabs` unless the MVP is already stable
+
 ## MVP Definition
 
 The MVP is complete when the app can:
@@ -32,6 +52,7 @@ Deprioritize or cut:
 2. advanced settings
 3. visual polish that does not improve the demo
 4. cloud AI integrations
+5. any custom system that duplicates an existing SDK
 
 ## Build Order
 

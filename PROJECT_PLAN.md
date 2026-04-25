@@ -4,6 +4,12 @@
 
 This project is an iOS accessibility prototype intended for a hackathon. The app uses an iPhone or iPad with a LiDAR Scanner to estimate nearby obstacles and surfaces, then communicates that information through speech and haptics. The target audience is blind or low-vision users, but this must be treated as an experimental awareness aid, not a navigation or safety device.
 
+The implementation rule for this project is:
+
+- abstract as much as possible
+- use existing frameworks and SDKs wherever they already solve the problem
+- only write custom code where platform APIs do not provide the missing piece
+
 The product goal is narrow:
 
 - detect nearby obstacles in front of the user
@@ -65,6 +71,24 @@ The stretch version is successful if it can also:
 
 Use `React Native` for the app shell and `Swift` for the sensing engine.
 
+### Simplicity-First Rule
+
+Prefer this order of implementation:
+
+1. built-in Apple frameworks
+2. Expo abstractions
+3. well-supported SDKs like `Google ML Kit`
+4. small custom native code
+5. custom AI logic only if the product still needs it
+
+In practice, that means:
+
+- use `ARKit` instead of building custom depth logic from scratch
+- use `AVSpeechSynthesizer` instead of adding a network voice service for the MVP
+- use `Expo Modules API` instead of building a larger manual bridge
+- use `Google ML Kit` before considering custom object-detection models
+- keep `Gemma` and `ElevenLabs` optional and outside the fast feedback loop
+
 Recommended stack:
 
 - `React Native` for screens and controls
@@ -89,6 +113,7 @@ Optional AI services:
 - the UI can be built quickly
 - the iOS-specific sensor work remains native
 - Expo local modules provide a cleaner path than building a large bridge by hand
+- the amount of custom native code can stay very small
 
 ### Explicit Recommendation
 

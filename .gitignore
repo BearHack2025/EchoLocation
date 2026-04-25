@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+
+# Editor / IDE
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Local app build artifacts
+echolocation/node_modules/
+echolocation/.expo/
+echolocation/dist/
+echolocation/web-build/
+echolocation/.metro-health-check*
+echolocation/expo-env.d.ts
+echolocation/*.tsbuildinfo
+
+# Generated native projects from Expo prebuild
+echolocation/ios/
+echolocation/android/
+
+# Native secrets / signing files
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+*.orig.*
+
+# CocoaPods / native temp files
+echolocation/Pods/
+echolocation/.symlinks/
+
