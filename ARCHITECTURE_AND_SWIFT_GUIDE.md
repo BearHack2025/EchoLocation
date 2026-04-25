@@ -174,7 +174,10 @@ Swift / iOS Layer
   -> LiDAR depth reading
   -> confidence filtering
   -> left/center/right inference
-  -> optional mesh classification
+  -> mesh classification
+  -> ML Kit handoff for object hints
+  -> Gemma handoff for scene summary
+  -> ElevenLabs playback path
   -> speech/haptics
 
 Outputs
@@ -208,7 +211,8 @@ Responsibilities:
 - use confidence data to reject weak pixels
 - estimate nearest obstacle distance
 - infer direction such as left, center, or right
-- optionally attach a coarse label from mesh classification
+- attach a coarse label from mesh classification when available
+- hand off structured detections to `ML Kit`, `Gemma`, and `ElevenLabs` flows
 - emit compact events to JavaScript
 
 This layer should own all real-time sensing logic.
@@ -418,18 +422,21 @@ Goal:
 - add haptics or echo beeps
 - rate-limit repeated announcements
 
-### Step 7: Optional Labels
+### Step 7: Required AI Describe Flow
 
 Add:
 
 - mesh classification with `ARKit`
-- optional `Google ML Kit` object labeling later
+- `Google ML Kit` object labeling
+- `Gemma` scene summarization
+- `ElevenLabs` playback
 
 Goal:
 
 - improve phrases from:
   - "obstacle ahead"
   - to "table right"
+  - and provide a richer track-demo description on demand
 
 ## What The MVP Actually Does
 

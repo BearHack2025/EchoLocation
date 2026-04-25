@@ -24,7 +24,17 @@ Apply that rule everywhere:
 - use `AVSpeechSynthesizer` for speech first
 - use `Expo Modules API` for the bridge
 - use `Google ML Kit` before custom vision models
-- do not add `Gemma` or `ElevenLabs` unless the MVP is already stable
+- keep `Gemma` and `ElevenLabs` out of the fast feedback loop, but treat them as required track features
+
+## Track Requirements
+
+To compete for the intended sponsor tracks, the delivered demo must visibly include:
+
+1. `Google ML Kit` for object detection or image labeling
+2. `Gemma 3` or `Gemma 3n` for scene reasoning or summarization
+3. `ElevenLabs` for premium voice output or voice interaction
+
+These are not stretch goals in this plan. They are required demo integrations.
 
 ## MVP Definition
 
@@ -424,9 +434,7 @@ Definition of done:
 
 - spoken phrases improve from `obstacle ahead` to `table right`
 
-## Phase 8: Optional Object Detection
-
-Only do this if Phases 0 through 7 are stable.
+## Phase 8: Google ML Kit Object Detection
 
 ### Task 8.1: Integrate Google ML Kit
 
@@ -461,9 +469,7 @@ Definition of done:
 
 - app can say phrases like `possible chair ahead`
 
-## Phase 9: Optional AI Summaries
-
-Only do this after the core demo works.
+## Phase 9: Gemma Summarization
 
 ### Task 9.1: Add Gemma Summarization
 
@@ -475,9 +481,11 @@ Requirements:
 
 Definition of done:
 
-- on demand, app can produce a richer summary
+- app can produce a richer summary on demand during the demo
 
-### Task 9.2: Add ElevenLabs Voice
+## Phase 10: ElevenLabs Voice
+
+### Task 10.1: Add ElevenLabs Voice
 
 Requirements:
 
@@ -488,7 +496,20 @@ Definition of done:
 
 - richer spoken responses work reliably in demo conditions
 
-## Phase 10: Demo Polish
+### Task 10.2: Add One Explicit AI Demo Action
+
+Requirements:
+
+- add one button or voice prompt such as:
+  - `Describe Scene`
+  - `What is in front of me?`
+- route that flow through `ML Kit -> Gemma -> ElevenLabs`
+
+Definition of done:
+
+- judges can clearly see the sponsor integrations being exercised
+
+## Phase 11: Demo Polish
 
 ### Task 10.1: Improve Demo UI
 
@@ -570,6 +591,9 @@ Use this each day during the hackathon.
 - add speech
 - add haptics or beeps
 - add mesh labels if stable
+- add `ML Kit`
+- add `Gemma`
+- add `ElevenLabs`
 - polish demo flow
 - rehearse final pitch
 
@@ -577,20 +601,21 @@ Use this each day during the hackathon.
 
 If time runs short, cut in this order:
 
-1. Gemma
-2. ElevenLabs
-3. ML Kit object detection
-4. advanced settings
-5. visual polish
-6. mesh labels
+1. advanced settings
+2. visual polish
+3. extra modes beyond the main demo path
+4. mesh labels
 
 Do not cut:
 
-1. support checks
-2. distance detection
-3. direction detection
-4. feedback output
-5. demo rehearsal
+1. `ML Kit`
+2. `Gemma`
+3. `ElevenLabs`
+4. support checks
+5. distance detection
+6. direction detection
+7. feedback output
+8. demo rehearsal
 
 ## Final Demo Checklist
 
@@ -604,6 +629,7 @@ Before presenting:
 - speech timing is not too noisy
 - debug values are visible for judges
 - there is a backup explanation if labels fail
+- the `ML Kit -> Gemma -> ElevenLabs` demo path works at least once reliably
 
 ## Definition Of Success
 

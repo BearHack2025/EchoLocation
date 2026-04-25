@@ -16,7 +16,10 @@ The product goal is narrow:
 - estimate rough direction such as left, center, or right
 - provide short spoken cues such as "wall ahead, 1.2 meters"
 - provide haptic or beep-based feedback as objects get closer
-- optionally identify coarse scene classes such as wall, floor, table, seat, door, and window
+- identify coarse scene classes such as wall, floor, table, seat, door, and window
+- identify likely object categories with camera-based detection
+- generate richer scene descriptions with `Gemma`
+- speak the rich descriptions with `ElevenLabs`
 
 The product should not promise:
 
@@ -28,6 +31,20 @@ The product should not promise:
 ## Product Statement
 
 Echolocation is a short-range spatial awareness prototype for iPhone LiDAR devices. It translates depth and scene understanding into audio and haptic cues to help a user understand what is directly nearby.
+
+## Track Strategy
+
+This project is intended to compete on multiple sponsor tracks, so the following are not treated as optional pitch extras. They are required demo features:
+
+- `Google ML Kit` for object detection or image labeling
+- `Gemma 3` or `Gemma 3n` for scene reasoning or summarization
+- `ElevenLabs` for premium spoken output or voice interaction
+
+The architectural rule is:
+
+- keep `ARKit` in the fast awareness loop
+- place `ML Kit`, `Gemma`, and `ElevenLabs` in the richer description loop
+- make sure the demo visibly exercises each technology
 
 ## Core User Experience
 
@@ -63,7 +80,8 @@ The stretch version is successful if it can also:
 
 1. infer left, center, or right obstacle direction
 2. classify coarse surfaces with mesh reconstruction
-3. add a polished demo mode and onboarding
+3. combine `ML Kit`, `Gemma`, and `ElevenLabs` into a richer describe flow
+4. add a polished demo mode and onboarding
 
 ## Recommended Tech Stack
 
@@ -87,7 +105,7 @@ In practice, that means:
 - use `AVSpeechSynthesizer` instead of adding a network voice service for the MVP
 - use `Expo Modules API` instead of building a larger manual bridge
 - use `Google ML Kit` before considering custom object-detection models
-- keep `Gemma` and `ElevenLabs` optional and outside the fast feedback loop
+- keep `Gemma` and `ElevenLabs` outside the fast feedback loop, but include them in the demo-critical describe flow
 
 Recommended stack:
 
@@ -97,13 +115,13 @@ Recommended stack:
 - `Expo Modules API` for the native iOS module
 - `Swift` for the LiDAR and AR processing layer
 - `ARKit` for depth and scene reconstruction
-- `Google ML Kit` for optional camera-based object detection or image labeling
+- `Google ML Kit` for camera-based object detection or image labeling
 - `AVSpeechSynthesizer` for spoken feedback
 - `Core Haptics` or standard UIKit haptics for tactile alerts
 
-Optional AI services:
+Required AI services for track eligibility:
 
-- `Gemma` for scene summarization or multimodal reasoning
+- `Gemma 3` or `Gemma 3n` for scene summarization or multimodal reasoning
 - `ElevenLabs` for higher-quality voice output or voice input
 
 ### Why This Stack
@@ -272,10 +290,11 @@ ARKit camera + LiDAR
   -> native Swift session manager
   -> depth/confidence filtering
   -> obstacle summary
-  -> optional camera crop selection
-  -> optional object detection / image labeling
-  -> optional Gemma summarization layer
-  -> optional mesh classification
+  -> camera crop selection
+  -> ML Kit object detection / image labeling
+  -> Gemma summarization layer
+  -> mesh classification
+  -> ElevenLabs or native speech output
   -> speech/haptic controller
   -> event emitter
   -> React Native UI
@@ -308,7 +327,7 @@ Important limitations:
 - image labeling can return many labels, but those labels are not guaranteed to correspond to the exact nearest object
 - camera-based labels are less reliable than distance data for safety-critical feedback
 
-Best use in this app:
+Required use in this app:
 
 - use `ARKit` for distance and direction
 - use `ML Kit` for possible object identity
@@ -320,18 +339,18 @@ Recommended outputs:
 - "possible chair ahead, 1.1 meters"
 - "table right, 1.3 meters"
 
-### Option 2: Gemma
+### Option 2: Gemma 3 / 3n
 
-`Gemma` should not be the primary detector in the hackathon version. It is better used as a reasoning or summarization layer.
+`Gemma 3` or `Gemma 3n` should not be the primary detector in the hackathon version. It is the reasoning or summarization layer.
 
 According to Google's current docs, the Gemma family includes multimodal variants, and `Gemma 3n` is optimized for mobile-class devices while accepting text, visual, and audio inputs. However, that does not automatically make it the easiest or most reliable real-time detector for this app.
 
-Good uses for Gemma here:
+Required use for Gemma here:
 
 - summarizing structured detections into natural speech
 - answering a user-initiated question such as "what is in front of me?"
 - generating cleaner scene descriptions from multiple inputs
-- optional multimodal experimentation after the MVP works
+- powering the richer track-demo scene description
 
 Bad uses for Gemma here:
 
@@ -362,8 +381,8 @@ Example Gemma output:
 
 Practical recommendation:
 
-- if you use Gemma in the hackathon, run it as an optional feature
-- do not make the core demo depend on it
+- make Gemma part of the explicit `Describe` or `What is in front of me?` flow
+- do not make the fast obstacle warning loop depend on it
 
 ### Option 3: ElevenLabs
 
@@ -381,7 +400,7 @@ What it is not:
 
 If someone says ElevenLabs "tells you what object is in front of you", the missing part is that another vision system must first identify the object. ElevenLabs can then speak that result naturally.
 
-Best use in this app:
+Required use in this app:
 
 - convert the final description into a high-quality voice response
 - optionally support voice commands such as "describe scene" or "what is ahead?"
@@ -394,10 +413,10 @@ Why it is risky for the MVP:
 - privacy concerns because camera-derived information may leave the device
 - less predictable behavior than built-in iOS speech
 
-MVP recommendation:
+Recommendation:
 
-- use `AVSpeechSynthesizer` first
-- add `ElevenLabs` only if you want a more polished demo voice
+- keep `AVSpeechSynthesizer` as a fallback for the core awareness loop
+- use `ElevenLabs` for the richer sponsor-track description flow
 
 ## Final AI Stack Recommendation
 
@@ -405,10 +424,10 @@ For the hackathon version, the best stack is:
 
 - `ARKit` for depth and direction
 - `ARKit` mesh classification for coarse scene labels
-- `Google ML Kit` for optional object labels from the camera feed
-- `AVSpeechSynthesizer` for the main spoken feedback loop
-- `Gemma` only for optional scene summarization
-- `ElevenLabs` only for optional premium voice output or voice commands
+- `Google ML Kit` for object labels from the camera feed
+- `AVSpeechSynthesizer` for the fallback spoken feedback loop
+- `Gemma 3` or `Gemma 3n` for scene summarization
+- `ElevenLabs` for premium voice output or voice commands
 
 This gives you the cleanest separation:
 
@@ -416,6 +435,12 @@ This gives you the cleanest separation:
 - `ML Kit` answers: what might it be
 - `Gemma` answers: how should I phrase this
 - `ElevenLabs` answers: how should it sound
+
+This also gives you a clean sponsor-track story:
+
+- `Google` track: `ML Kit` plus `Gemma`
+- `ElevenLabs` track: premium voice guidance
+- accessibility track: LiDAR + directional awareness + voice/haptics
 
 ## AI Feature Priorities
 
@@ -428,7 +453,7 @@ Build in this order:
 5. Gemma summarization
 6. ElevenLabs voice polish
 
-If time is limited, stop after step 4.
+If time is limited, reduce sophistication inside steps 4 through 6, but do not remove them entirely.
 
 ## Development Setup
 
@@ -713,24 +738,40 @@ Deliverable:
 
 - phrases like "possible chair ahead" or "possible backpack right"
 
-### Milestone 6: Optional AI Voice and Summarization
+### Milestone 6: Gemma Summarization
 
 Goal:
 
-- optionally improve the polish of spoken responses
+- generate richer natural-language descriptions for the track demo
 
 Tasks:
 
 - add a summarization layer using `Gemma`
 - use it only for slower `Describe` mode or explicit user requests
-- optionally add `ElevenLabs` for richer text-to-speech
-- keep the real-time feedback loop independent of network AI
+- keep the real-time feedback loop independent of LLM latency
 
 Deliverable:
 
-- optional richer scene summaries without risking the main demo
+- richer scene summaries that combine distance, direction, and object hints
 
-### Milestone 7: Demo Polish
+### Milestone 7: ElevenLabs Voice
+
+Goal:
+
+- speak the richer AI summaries with a track-visible premium voice layer
+
+Tasks:
+
+- integrate ElevenLabs text-to-speech
+- choose the voice and model for low-latency demo playback
+- keep built-in speech as fallback
+- support one or two explicit voice-driven prompts if time allows
+
+Deliverable:
+
+- polished spoken responses driven by ElevenLabs
+
+### Milestone 8: Demo Polish
 
 Goal:
 
@@ -803,8 +844,9 @@ Tasks:
 - add haptics
 - add mode switching
 - add scene labels
-- add Google object detection only if the core loop is already stable
-- add Gemma or ElevenLabs only if there is extra time
+- add Google object detection
+- add Gemma describe flow
+- add ElevenLabs voice output
 - rehearse controlled demo
 
 End-of-day target:
@@ -929,15 +971,15 @@ Mitigation:
 
 ## Stretch Goals
 
-Only attempt these after the MVP works reliably.
+Only attempt these after the required track integrations work reliably.
 
 - mode-specific audio profiles
 - simple obstacle history smoothing
 - visual debug overlay for judges
 - saved threshold presets
-- optional camera-based `ML Kit` classification for coarse object guesses
-- optional `Gemma` scene summaries on demand
-- optional `ElevenLabs` voice output for a more polished demo
+- richer `ML Kit` prompt routing
+- more advanced `Gemma` scene summaries
+- more advanced `ElevenLabs` voice interaction
 - lightweight onboarding tutorial
 
 ## Features To Cut First If Time Runs Out
@@ -947,10 +989,14 @@ Cut in this order:
 1. general object recognition
 2. advanced settings
 3. visual overlays
-4. Gemma summarization
-5. ElevenLabs integration
-6. multiple scenes and fancy onboarding
-7. mesh labels
+4. multiple scenes and fancy onboarding
+5. mesh labels
+
+If time is tight, simplify the integrations instead of removing them:
+
+- use one `ML Kit` mode instead of multiple detectors
+- use one `Gemma` prompt instead of a full conversational flow
+- use one `ElevenLabs` voice and one playback path
 
 Never cut:
 
@@ -969,8 +1015,10 @@ Suggested demo script:
 2. point at a wall and hear "wall ahead"
 3. rotate toward a table and hear "table right"
 4. move forward to demonstrate closer haptic or beep feedback
-5. switch to `Echo Mode`
-6. show the debug UI to judges
+5. press `Describe Scene` and trigger the `ML Kit + Gemma + ElevenLabs` pipeline
+6. hear a richer description such as "There appears to be a table slightly to your right about one meter away"
+7. switch to `Echo Mode`
+8. show the debug UI to judges
 
 Important:
 
