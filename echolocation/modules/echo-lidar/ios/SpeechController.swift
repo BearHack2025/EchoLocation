@@ -19,13 +19,15 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   private var speechPitch: Float = 1.0
   private var speechVoice: String = "en-US"
 
+  private var isAwaitingAudio: Bool = false
+
   override init() {
     super.init()
     synthesizer.delegate = self
   }
 
   var isSpeaking: Bool {
-    return synthesizer.isSpeaking || (audioPlayer?.isPlaying ?? false)
+    return synthesizer.isSpeaking || (audioPlayer?.isPlaying ?? false) || isAwaitingAudio
   }
 
   func configureBuiltinSpeech(useBuiltin: Bool, rate: Float = 0.5, pitch: Float = 1.0, voice: String = "en-US") {
@@ -41,6 +43,7 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     } else {
       lastPhrase = text
       lastSpokenAt = Date()
+      isAwaitingAudio = true
       onSpeechRequest(text, mode)
     }
   }
@@ -71,6 +74,7 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
 
   func process(update: [String: Any], mode: String, onSpeechRequest: @escaping (String, String) -> Void) {
     guard mode != "quiet" else { return }
+    guard !isSpeaking else { return }
 
     guard
       let distance = update["nearestDistanceMeters"] as? Double,
@@ -115,6 +119,7 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     lastDirection = ""
     lastDistanceBucket = -1
     pendingCompletion = nil
+    isAwaitingAudio = false
 
     do {
       try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -124,10 +129,17 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   }
 
   func onAudioReady(audioUrl: String, completion: @escaping (Bool, String?) -> Void) {
+    isAwaitingAudio = false
+
+    audioPlayer?.stop()
+    audioPlayer = nil
+    synthesizer.stopSpeaking(at: .immediate)
+
     pendingCompletion = completion
 
     guard let url = URL(string: audioUrl) else {
       completion(false, "Invalid audio URL")
+      pendingCompletion = nil
       return
     }
 
@@ -139,7 +151,12 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
       lastSpokenAt = Date()
     } catch {
       completion(false, error.localizedDescription)
+      pendingCompletion = nil
     }
+  }
+
+  func onSpeechFailed() {
+    isAwaitingAudio = false
   }
 
   private func shortPhrase(direction: String, distance: Double) -> String {

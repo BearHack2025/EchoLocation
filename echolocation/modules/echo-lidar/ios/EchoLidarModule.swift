@@ -115,6 +115,8 @@ public final class EchoLidarModule: Module {
         return
       }
 
+      self.sessionController.speechController?.onSpeechFailed()
+
       if let handler = self.speechCompletionHandler {
         handler(false, error ?? "Unknown error")
         self.speechCompletionHandler = nil
