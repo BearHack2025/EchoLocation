@@ -2,8 +2,17 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
 import type { EchoUpdate, VoiceCommandEvent, AudioChunkEvent, VoiceCommandName } from 'echo-lidar';
-import { speakWithFallback, startRealtimeSTT, stopRealtimeSTT, sendSTTAudioChunk, commitSTT, isElevenSttConfigured, type SpeechMode } from '@/services/audio-service';
-import * as Speech from 'expo-speech';
+import {
+  configureAudioService,
+  speakWithFallback,
+  startRealtimeSTT,
+  stopRealtimeSTT,
+  sendSTTAudioChunk,
+  commitSTT,
+  isElevenSttConfigured,
+  isElevenLabsConfigured,
+  type SpeechMode,
+} from '@/services/audio-service';
 
 export type { EchoUpdate };
 
@@ -13,7 +22,7 @@ export function useEchoLidar() {
   const [running, setRunning] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [useBuiltin, setUseBuiltin] = useState(true);
+  const [useBuiltin, setUseBuiltin] = useState(false);
   const [elevenSttActive, setElevenSttActive] = useState(false);
 
   const sttReadyRef = useRef(false);
@@ -23,27 +32,31 @@ export function useEchoLidar() {
   const isSupported = EchoLidarModule.isSupported();
   const supportsDepth = EchoLidarModule.supportsDepth();
 
+  useEffect(() => {
+    configureAudioService({
+      useElevenLabs: true,
+      useFallback: false,
+      preferBuiltinForContinuous: false,
+    });
+  }, []);
+
   const handleSpeechRequest = useCallback(async (event: { text: string; mode: string }) => {
     const { text, mode } = event;
 
     try {
       const audioUrl = await speakWithFallback(text, mode as SpeechMode);
-
-      if (audioUrl === 'fallback') {
-        EchoLidarModule.onSpeechFailed('Builtin TTS fallback');
-        return;
-      }
-
       await EchoLidarModule.onSpeechReady(audioUrl);
     } catch (e) {
-      console.warn('[Audio] TTS failed, using builtin TTS:', e);
-      EchoLidarModule.onSpeechFailed(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn('[Audio] ElevenLabs TTS failed:', e);
+      setError(`ElevenLabs voice failed: ${message}`);
+      EchoLidarModule.onSpeechFailed(message);
     }
   }, []);
 
   const startElevenStt = useCallback(async () => {
     if (!isElevenSttConfigured()) {
-      console.log('[STT] ElevenLabs not configured, using built-in');
+      setError('ElevenLabs speech-to-text is not configured. Set EXPO_PUBLIC_ELEVENLABS_API_KEY.');
       return false;
     }
 
@@ -66,6 +79,7 @@ export function useEchoLidar() {
         onError: (error) => {
           console.warn('[STT] ElevenLabs error:', error);
           setElevenSttActive(false);
+          setError(`ElevenLabs speech-to-text failed: ${error}`);
         },
         onConnected: () => {
           console.log('[STT] ElevenLabs connected');
@@ -80,7 +94,9 @@ export function useEchoLidar() {
       });
       return true;
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
       console.warn('[STT] Failed to start ElevenLabs:', e);
+      setError(`ElevenLabs speech-to-text failed: ${message}`);
       return false;
     }
   }, []);
@@ -94,15 +110,20 @@ export function useEchoLidar() {
     return null;
   };
 
-  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe', useBuiltinSpeech?: boolean) => {
-    const shouldUseBuiltinSpeech = useBuiltinSpeech ?? !isElevenSttConfigured();
+  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe') => {
+    if (!isElevenLabsConfigured() || !isElevenSttConfigured()) {
+      setError('ElevenLabs is required. Set EXPO_PUBLIC_ELEVENLABS_API_KEY to enable voice and speech-to-text.');
+      setUseBuiltin(false);
+      return;
+    }
+
     setError(null);
-    setUseBuiltin(shouldUseBuiltinSpeech);
+    setUseBuiltin(false);
     try {
-      await EchoLidarModule.start(mode, shouldUseBuiltinSpeech);
+      await EchoLidarModule.start(mode, false);
       setRunning(true);
       try {
-        await EchoLidarModule.startVoiceCommands(shouldUseBuiltinSpeech);
+        await EchoLidarModule.startVoiceCommands(false);
         setListening(true);
       } catch (voiceError: unknown) {
         setListening(false);
@@ -130,15 +151,12 @@ export function useEchoLidar() {
   const speakCommand = useCallback(async (text: string): Promise<boolean> => {
     try {
       const audioUrl = await speakWithFallback(text, 'describe');
-      if (audioUrl === 'fallback') {
-        await Speech.speak(text, { language: 'en-US', rate: 0.9 });
-        return true;
-      }
       await EchoLidarModule.onSpeechReady(audioUrl);
       return true;
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
       console.warn('[Audio] Voice command TTS failed:', e);
-      await Speech.speak(text, { language: 'en-US', rate: 0.9 });
+      setError(`ElevenLabs voice failed: ${message}`);
       return false;
     }
   }, []);
