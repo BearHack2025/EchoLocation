@@ -35,6 +35,8 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     if useBuiltinSpeech {
       speakBuiltin(text: text, mode: mode)
     } else {
+      lastPhrase = text
+      lastSpokenAt = Date()
       onSpeechRequest(text, mode)
     }
   }
@@ -182,4 +184,3 @@ extension SpeechController: AVAudioPlayerDelegate {
     audioPlayer = nil
   }
 }
-

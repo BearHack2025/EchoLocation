@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
 import type { EchoUpdate, VoiceCommandEvent, AudioChunkEvent, VoiceCommandName } from 'echo-lidar';
@@ -27,6 +28,7 @@ export function useEchoLidar() {
 
   const sttReadyRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
   const SILENCE_THRESHOLD_MS = 800;
 
   const isSupported = EchoLidarModule.isSupported();
@@ -38,6 +40,24 @@ export function useEchoLidar() {
       useFallback: false,
       preferBuiltinForContinuous: false,
     });
+
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.remove();
+        playerRef.current = null;
+      }
+    };
+  }, []);
+
+  const playAudioUrl = useCallback(async (audioUrl: string): Promise<void> => {
+    if (playerRef.current) {
+      playerRef.current.remove();
+      playerRef.current = null;
+    }
+
+    const player = createAudioPlayer(audioUrl);
+    playerRef.current = player;
+    player.play();
   }, []);
 
   const handleSpeechRequest = useCallback(async (event: { text: string; mode: string }) => {
@@ -45,14 +65,14 @@ export function useEchoLidar() {
 
     try {
       const audioUrl = await speakWithFallback(text, mode as SpeechMode);
-      await EchoLidarModule.onSpeechReady(audioUrl);
+      await playAudioUrl(audioUrl);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       console.warn('[Audio] ElevenLabs TTS failed:', e);
       setError(`ElevenLabs voice failed: ${message}`);
       EchoLidarModule.onSpeechFailed(message);
     }
-  }, []);
+  }, [playAudioUrl]);
 
   const startElevenStt = useCallback(async () => {
     if (!isElevenSttConfigured()) {
@@ -144,6 +164,10 @@ export function useEchoLidar() {
     stopRealtimeSTT();
     setElevenSttActive(false);
     sttReadyRef.current = false;
+    if (playerRef.current) {
+      playerRef.current.remove();
+      playerRef.current = null;
+    }
     await EchoLidarModule.stop();
     setRunning(false);
   };
@@ -151,7 +175,7 @@ export function useEchoLidar() {
   const speakCommand = useCallback(async (text: string): Promise<boolean> => {
     try {
       const audioUrl = await speakWithFallback(text, 'describe');
-      await EchoLidarModule.onSpeechReady(audioUrl);
+      await playAudioUrl(audioUrl);
       return true;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -159,7 +183,7 @@ export function useEchoLidar() {
       setError(`ElevenLabs voice failed: ${message}`);
       return false;
     }
-  }, []);
+  }, [playAudioUrl]);
 
   useEffect(() => {
     const echoSub = EchoLidarEmitter.addListener('onEchoUpdate', (event) => {
