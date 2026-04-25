@@ -1,98 +1,109 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+import { Spacing } from '@/constants/theme';
+import { useEchoLidar } from '@/hooks/use-echo-lidar';
 
 export default function HomeScreen() {
+  const { latest, running, error, isSupported, supportsDepth, start, stop } = useEchoLidar();
+
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
+      <SafeAreaView style={styles.safe}>
+
+        <ThemedText type="subtitle" style={styles.center}>Echolocation</ThemedText>
+
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <Row label="ARKit supported" value={isSupported ? '✓' : '✗'} />
+          <Row label="LiDAR depth" value={supportsDepth ? '✓' : '✗'} />
+          <Row label="Status" value={running ? 'running' : 'stopped'} />
         </ThemedView>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        {latest ? (
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <Row label="Distance" value={latest.nearestDistanceMeters != null ? `${latest.nearestDistanceMeters.toFixed(2)} m` : '—'} />
+            <Row label="Direction" value={latest.direction} />
+            <Row label="Label" value={latest.label} />
+            <Row label="Confidence" value={`${(latest.confidence * 100).toFixed(0)}%`} />
+            <Row label="Source" value={latest.source} />
+          </ThemedView>
+        ) : (
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
+              no data yet — tap Start
+            </ThemedText>
+          </ThemedView>
+        )}
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+        {error ? (
+          <ThemedText type="small" style={[styles.center, styles.error]}>{error}</ThemedText>
+        ) : null}
 
-        {Platform.OS === 'web' && <WebBadge />}
+        <View style={styles.buttons}>
+          <Pressable
+            style={[styles.btn, styles.btnStart, running && styles.btnDisabled]}
+            onPress={() => start('describe')}
+            disabled={running}
+          >
+            <ThemedText type="smallBold" style={styles.btnLabel}>Start</ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.btn, styles.btnStop, !running && styles.btnDisabled]}
+            onPress={stop}
+            disabled={!running}
+          >
+            <ThemedText type="smallBold" style={styles.btnLabel}>Stop</ThemedText>
+          </Pressable>
+        </View>
+
       </SafeAreaView>
     </ThemedView>
   );
 }
 
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.row}>
+      <ThemedText type="small" themeColor="textSecondary">{label}</ThemedText>
+      <ThemedText type="smallBold">{value}</ThemedText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  safe: {
     flex: 1,
+    padding: Spacing.four,
+    gap: Spacing.three,
     justifyContent: 'center',
+  },
+  center: { textAlign: 'center' },
+  card: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  row: {
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
   },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  buttons: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+  },
+  btn: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.three,
+    alignItems: 'center',
   },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+  btnStart: { backgroundColor: '#3c87f7' },
+  btnStop: { backgroundColor: '#ff453a' },
+  btnDisabled: { opacity: 0.4 },
+  btnLabel: { color: '#ffffff' },
+  error: { color: '#ff453a' },
 });

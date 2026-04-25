@@ -11,7 +11,21 @@ type NativeEchoLidarModule = {
   stop(): Promise<void>;
 };
 
-const EchoLidarModule = requireNativeModule<NativeEchoLidarModule>('EchoLidar');
+// requireNativeModule throws in Expo Go / simulator without a dev build.
+// Fall back to a no-op stub so the JS bundle still loads.
+let EchoLidarModule: NativeEchoLidarModule;
+try {
+  EchoLidarModule = requireNativeModule<NativeEchoLidarModule>('EchoLidar');
+} catch {
+  EchoLidarModule = {
+    isSupported: () => false,
+    supportsDepth: () => false,
+    supportsMeshClassification: () => false,
+    getSupportStatus: () => ({ isARSupported: false, supportsDepth: false, supportsMeshClassification: false }),
+    start: async () => { throw new Error('EchoLidar native module not available — use a development build'); },
+    stop: async () => {},
+  };
+}
 
 export const EchoLidarEmitter = new EventEmitter<EchoLidarModuleEvents>(
   EchoLidarModule as never

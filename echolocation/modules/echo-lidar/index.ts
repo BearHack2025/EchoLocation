@@ -1,2 +1,2 @@
-export { default } from './src/EchoLidarModule';
+export { default, EchoLidarEmitter } from './src/EchoLidarModule';
 export * from './src/EchoLidar.types';
