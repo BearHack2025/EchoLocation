@@ -88,6 +88,7 @@ export function useElevenLabs() {
       } catch (e) {
         if (myGen !== speechGenRef.current) return false;
         const message = e instanceof Error ? e.message : String(e);
+        if (message.startsWith('Cooldown:')) return false;
         const elevenError = e as ElevenLabsError;
         if (elevenError.statusCode) {
           setError(`Speech failed (${elevenError.statusCode}): ${message}`);
@@ -113,8 +114,10 @@ export function useElevenLabs() {
       setLastSpokenText(text);
 
       if (isTtsConfigured()) {
+        const fbController = new AbortController();
+        abortRef.current = fbController;
         try {
-          const result = await speak(text, config);
+          const result = await speak(text, config, fbController.signal);
           if (myGen !== speechGenRef.current) return false;
           if (result.audioUrl === undefined) {
             throw new Error('No audio URL returned from ElevenLabs');
@@ -134,6 +137,8 @@ export function useElevenLabs() {
           return true;
         } catch (e) {
           if (myGen !== speechGenRef.current) return false;
+          const message = e instanceof Error ? e.message : String(e);
+          if (message.startsWith('Cooldown:')) return false;
           console.warn('ElevenLabs TTS failed, falling back to expo-speech:', e);
         }
       }

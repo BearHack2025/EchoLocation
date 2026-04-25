@@ -25,6 +25,10 @@ const DEFAULT_MODEL_ID = 'eleven_flash_v2_5';
 const cachedAudio: Map<string, string> = new Map();
 const MAX_CACHE_SIZE = 20;
 
+const inFlight: Map<string, Promise<ElevenLabsTTSResponse>> = new Map();
+const lastSpokenAt: Map<string, number> = new Map();
+const SAME_TEXT_COOLDOWN_MS = 3000;
+
 export const getApiKey = (): string => {
   return process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
 };
@@ -53,7 +57,18 @@ export const speak = async (
   const cacheKey = `${voiceId}:${text}`;
   const cachedUrl = cachedAudio.get(cacheKey);
   if (cachedUrl) {
+    lastSpokenAt.set(cacheKey, Date.now());
     return { audioUrl: cachedUrl };
+  }
+
+  const inFlightPromise = inFlight.get(cacheKey);
+  if (inFlightPromise) {
+    return inFlightPromise;
+  }
+
+  const lastAt = lastSpokenAt.get(cacheKey);
+  if (lastAt && Date.now() - lastAt < SAME_TEXT_COOLDOWN_MS) {
+    throw new ElevenLabsError('Cooldown: same text spoken too recently');
   }
 
   const startTime = Date.now();
@@ -67,62 +82,66 @@ export const speak = async (
     else signal.addEventListener('abort', onExternalAbort);
   }
 
-  try {
-    const response = await fetch(
-      `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'xi-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          text,
-          model_id: modelId,
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
+  const requestPromise = (async (): Promise<ElevenLabsTTSResponse> => {
+    try {
+      const response = await fetch(
+        `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'xi-api-key': apiKey,
           },
-        }),
-        signal: controller.signal,
+          body: JSON.stringify({
+            text,
+            model_id: modelId,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+            },
+          }),
+          signal: controller.signal,
+        }
+      );
+
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+
+      if (!response.ok) {
+        const error = await response.text();
+        logAudioError('elevenlabs-tts', `HTTP ${response.status}: ${error}`, text);
+        throw new ElevenLabsError(`API error: ${error}`, response.status);
       }
-    );
 
-    clearTimeout(timeoutId);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
+      const audioArrayBuffer = await response.arrayBuffer();
+      const audioBase64 = arrayBufferToBase64(audioArrayBuffer);
+      const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
 
-    if (!response.ok) {
-      const error = await response.text();
-      logAudioError('elevenlabs-tts', `HTTP ${response.status}: ${error}`, text);
-      throw new ElevenLabsError(`API error: ${error}`, response.status);
-    }
-
-    const audioArrayBuffer = await response.arrayBuffer();
-    const audioBase64 = arrayBufferToBase64(audioArrayBuffer);
-    const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
-
-    if (cachedAudio.size >= MAX_CACHE_SIZE) {
-      const firstKey = cachedAudio.keys().next().value;
-      if (firstKey) {
-        cachedAudio.delete(firstKey);
+      if (cachedAudio.size >= MAX_CACHE_SIZE) {
+        const firstKey = cachedAudio.keys().next().value;
+        if (firstKey) cachedAudio.delete(firstKey);
       }
-    }
-    cachedAudio.set(cacheKey, audioUrl);
+      cachedAudio.set(cacheKey, audioUrl);
+      lastSpokenAt.set(cacheKey, Date.now());
 
-    const latency = Date.now() - startTime;
-    logAudioSuccess('elevenlabs-tts', text, latency);
+      const latency = Date.now() - startTime;
+      logAudioSuccess('elevenlabs-tts', text, latency);
 
-    return { audioUrl };
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
-    if (error instanceof ElevenLabsError) {
-      throw error;
+      return { audioUrl };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+      if (error instanceof ElevenLabsError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logAudioError('elevenlabs-tts', message, text);
+      throw new ElevenLabsError(`Request failed: ${message}`);
+    } finally {
+      inFlight.delete(cacheKey);
     }
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    logAudioError('elevenlabs-tts', message, text);
-    throw new ElevenLabsError(`Request failed: ${message}`);
-  }
+  })();
+
+  inFlight.set(cacheKey, requestPromise);
+  return requestPromise;
 };
 
 export const speakAndPlay = async (
