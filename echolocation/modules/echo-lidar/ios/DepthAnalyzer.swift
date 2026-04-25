@@ -5,6 +5,8 @@ import simd
 
 final class DepthAnalyzer {
   private let meshClassifier = MeshClassifier()
+  private(set) var lastNearestWorldPoint: SIMD3<Float>?
+  private(set) var lastNearestDistance: Float?
 
   func analyze(frame: ARFrame, mode: String, tracker: ObjectAnchorTracker? = nil) -> [String: Any]? {
     guard let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth else {
@@ -113,17 +115,18 @@ final class DepthAnalyzer {
     var label = meshClassifier.classify(frame: frame, direction: bestDirection, distance: bestDistance)
     var labelSource = "arkit-mesh"
 
-    if let tracker {
-      let worldPoint = unproject(
-        camera: frame.camera,
-        normX: bestNormX,
-        normY: bestNormY,
-        depth: bestDistance
-      )
-      if let match = tracker.bestLabel(near: worldPoint) {
-        label = match.label
-        labelSource = "mlkit"
-      }
+    let worldPoint = unproject(
+      camera: frame.camera,
+      normX: bestNormX,
+      normY: bestNormY,
+      depth: bestDistance
+    )
+    lastNearestWorldPoint = worldPoint
+    lastNearestDistance = bestDistance
+
+    if let tracker, let match = tracker.bestLabel(near: worldPoint) {
+      label = match.label
+      labelSource = "mlkit"
     }
 
     return [

@@ -20,7 +20,9 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let depthAnalyzer = DepthAnalyzer()
   private let objectTracker = ObjectAnchorTracker()
   private lazy var mlkitDetector: MLKitObjectDetector = MLKitObjectDetector()
+  private let pingPlayer = SpatialPingPlayer()
   var speechController: SpeechController?
+  var spatialPingsEnabled: Bool = true
 
   var sharedARSession: ARSession { arSession }
 
@@ -59,12 +61,17 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
 
     arSession.delegate = self
     arSession.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+
+    if spatialPingsEnabled {
+      pingPlayer.start()
+    }
   }
 
   func stop() {
     mockTimer?.invalidate()
     mockTimer = nil
     arSession.pause()
+    pingPlayer.stop()
     objectTracker.reset()
     speechController?.stop()
     speechController = nil
@@ -84,6 +91,15 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
 
     guard let update = depthAnalyzer.analyze(frame: frame, mode: mode, tracker: objectTracker) else {
       return
+    }
+
+    if spatialPingsEnabled {
+      pingPlayer.updateListener(transform: frame.camera.transform)
+      pingPlayer.updateEmitter(
+        worldPoint: depthAnalyzer.lastNearestWorldPoint,
+        distance: depthAnalyzer.lastNearestDistance
+      )
+      pingPlayer.setMuted(speechController?.isSpeaking ?? false)
     }
 
     speechController?.process(update: update, mode: mode) { [weak self] text, speechMode in

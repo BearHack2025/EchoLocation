@@ -24,6 +24,10 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     synthesizer.delegate = self
   }
 
+  var isSpeaking: Bool {
+    return synthesizer.isSpeaking || (audioPlayer?.isPlaying ?? false)
+  }
+
   func configureBuiltinSpeech(useBuiltin: Bool, rate: Float = 0.5, pitch: Float = 1.0, voice: String = "en-US") {
     useBuiltinSpeech = useBuiltin
     speechRate = rate

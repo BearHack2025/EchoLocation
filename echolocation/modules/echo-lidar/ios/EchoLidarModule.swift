@@ -53,6 +53,10 @@ public final class EchoLidarModule: Module {
       self?.sessionController.speechController?.configureBuiltinSpeech(useBuiltin: enabled)
     }
 
+    AsyncFunction("setSpatialPingsEnabled") { [weak self] (enabled: Bool) in
+      self?.sessionController.spatialPingsEnabled = enabled
+    }
+
     AsyncFunction("start") { [weak self] (mode: String?, useBuiltin: Bool?) in
       guard let self else {
         return

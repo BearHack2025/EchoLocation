@@ -14,6 +14,7 @@ type NativeEchoLidarModule = {
   onSpeechReady(audioUrl: string): Promise<void>;
   onSpeechFailed(error?: string): Promise<void>;
   setBuiltinSpeechEnabled(enabled: boolean): Promise<void>;
+  setSpatialPingsEnabled(enabled: boolean): Promise<void>;
 };
 
 // requireNativeModule throws in Expo Go / simulator without a dev build.
@@ -34,6 +35,7 @@ try {
     onSpeechReady: async () => {},
     onSpeechFailed: async () => {},
     setBuiltinSpeechEnabled: async () => {},
+    setSpatialPingsEnabled: async () => {},
   };
 }
 
