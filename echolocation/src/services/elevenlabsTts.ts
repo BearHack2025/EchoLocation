@@ -20,7 +20,7 @@ export interface ElevenLabsTTSResponse {
 }
 
 const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
-const DEFAULT_MODEL_ID = 'eleven_flash_v2_5';
+const DEFAULT_MODEL_ID = 'eleven_turbo_v2_5';
 
 const cachedAudio: Map<string, string> = new Map();
 const MAX_CACHE_SIZE = 20;
@@ -135,7 +135,7 @@ export const clearCache = (): void => {
 export const availableVoices = [
   { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel' },
   { id: 'AZnzlk1XvdvchwBnXaMl', name: 'Domi' },
-  { id: 'EXw4nqY7xTfnS2A7P8xL', name: 'Arnold' },
+  { id: 'zmcVlqmyk3Jpn5AVYcAL', name: 'Arnold' },
   { id: 'MF4bmhG2ZsrAZZ7fNpB', name: 'Adam' },
   { id: 'pNInz6ob2mDXGfyi2Xv', name: 'Sam' },
 ];
