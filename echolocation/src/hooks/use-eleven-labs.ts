@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { createAudioPlayer, AudioPlayer } from 'expo-audio';
+import * as Speech from 'expo-speech';
 
 import {
   speak,
@@ -90,6 +91,71 @@ export function useElevenLabs() {
     setIsPlaying(false);
   }, []);
 
+  const speakWithFallback = useCallback(
+    async (text: string, config?: Partial<ElevenLabsTTSConfig>): Promise<boolean> => {
+      setError(null);
+      setLastSpokenText(text);
+
+      if (isTtsConfigured()) {
+        try {
+          if (playerRef.current) {
+            playerRef.current.remove();
+            playerRef.current = null;
+          }
+
+          const result = await speak(text, config);
+          if (result.audioUrl === undefined) {
+            throw new Error('No audio URL returned from ElevenLabs');
+          }
+
+          const player = createAudioPlayer(result.audioUrl);
+          playerRef.current = player;
+
+          player.addListener('playbackStatusUpdate', (status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              setIsPlaying(false);
+            }
+          });
+
+          player.play();
+          setIsPlaying(true);
+          return true;
+        } catch (e) {
+          console.warn('ElevenLabs TTS failed, falling back to expo-speech:', e);
+        }
+      }
+
+      try {
+        await Speech.speak(text, {
+          language: 'en-US',
+          pitch: 1.0,
+          rate: 0.9,
+          onStart: () => setIsPlaying(true),
+          onDone: () => setIsPlaying(false),
+          onError: (e) => {
+            setError(`Speech fallback failed: ${e.message}`);
+            setIsPlaying(false);
+          },
+        });
+      } catch (e) {
+        setError(`expo-speech failed: ${e instanceof Error ? e.message : String(e)}`);
+        setIsPlaying(false);
+      }
+      return true;
+    },
+    []
+  );
+
+  const stopSpeakingAll = useCallback(async () => {
+    if (playerRef.current) {
+      playerRef.current.pause();
+      playerRef.current.remove();
+      playerRef.current = null;
+    }
+    Speech.stop();
+    setIsPlaying(false);
+  }, []);
+
   const transcribeAudio = useCallback(
     async (
       audioBlob: Blob,
@@ -123,6 +189,35 @@ export function useElevenLabs() {
     []
   );
 
+  const transcribeWithFallback = useCallback(
+    async (
+      audioBlob: Blob,
+      config?: Partial<ElevenLabsSTTConfig>
+    ): Promise<string | null> => {
+      setError(null);
+      setIsRecording(true);
+
+      if (isSttConfigured()) {
+        try {
+          const result = await transcribe(audioBlob, config);
+          setLastTranscribedText(result.text);
+          setIsRecording(false);
+          return result.text;
+        } catch (e) {
+          console.warn('ElevenLabs STT failed, no fallback available:', e);
+          setError(e instanceof Error ? e.message : String(e));
+          setIsRecording(false);
+          return null;
+        }
+      }
+
+      setError('ElevenLabs not configured and no builtin fallback available');
+      setIsRecording(false);
+      return null;
+    },
+    []
+  );
+
   const clearElevenLabsCache = useCallback(() => {
     clearCache();
   }, []);
@@ -143,8 +238,11 @@ export function useElevenLabs() {
     lastTranscribedText,
     error,
     speakText,
+    speakWithFallback,
     stopSpeaking,
+    stopSpeakingAll,
     transcribeAudio,
+    transcribeWithFallback,
     clearCache: clearElevenLabsCache,
   };
 }
