@@ -21,7 +21,11 @@ public final class EchoLidarModule: Module {
 
     Events("onEchoUpdate", "onVoiceCommand")
 
-    View(EchoLidarPreviewView.self) {}
+    View(EchoLidarPreviewView.self) {
+      Prop("showHeatmap") { (view: EchoLidarPreviewView, value: Bool?) in
+        view.showHeatmap = value ?? true
+      }
+    }
 
     Function("isSupported") {
       ARWorldTrackingConfiguration.isSupported

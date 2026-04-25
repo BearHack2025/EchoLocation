@@ -2,14 +2,33 @@ import ARKit
 import SceneKit
 import UIKit
 
-/// Builds wireframe SCNGeometry from ARMeshAnchors. Each anchor's geometry is
-/// colored by the majority `ARMeshClassification` in its faces.
-/// Wireframe via `material.fillMode = .lines` so we can see camera + structure.
+/// Builds the two SCNGeometry layers we render per ARMeshAnchor:
+/// - **fill**: solid faces, distance-shaded via `MeshDistanceShader`
+/// - **outline**: same faces in `.lines` mode, classification-colored
+///
+/// Both share the underlying MTLBuffers — only materials differ.
 enum MeshAnchorRenderer {
   // MARK: - Public
 
-  /// Build a fresh SCNGeometry for a mesh anchor. Caller owns the SCNNode.
-  static func makeGeometry(for anchor: ARMeshAnchor) -> SCNGeometry {
+  /// Solid distance-shaded fill. Faces visible.
+  static func makeFillGeometry(for anchor: ARMeshAnchor) -> SCNGeometry {
+    let geometry = makeBaseGeometry(for: anchor)
+    let material = SCNMaterial()
+    MeshDistanceShader.applyHeatmap(to: material)
+    geometry.firstMaterial = material
+    return geometry
+  }
+
+  /// Wireframe outline colored by majority `ARMeshClassification` of the anchor.
+  static func makeOutlineGeometry(for anchor: ARMeshAnchor) -> SCNGeometry {
+    let geometry = makeBaseGeometry(for: anchor)
+    geometry.firstMaterial = makeOutlineMaterial(color: majorityColor(for: anchor))
+    return geometry
+  }
+
+  // MARK: - Geometry (shared)
+
+  private static func makeBaseGeometry(for anchor: ARMeshAnchor) -> SCNGeometry {
     let mesh = anchor.geometry
 
     let vertexSource = SCNGeometrySource(
@@ -21,8 +40,6 @@ enum MeshAnchorRenderer {
       dataStride: mesh.vertices.stride
     )
 
-    // ARMeshGeometry.faces stores triangle vertex indices. SCNGeometryElement
-    // consumes the same MTLBuffer.
     let element = SCNGeometryElement(
       buffer: mesh.faces.buffer,
       primitiveType: .triangles,
@@ -30,20 +47,19 @@ enum MeshAnchorRenderer {
       bytesPerIndex: mesh.faces.bytesPerIndex
     )
 
-    let geometry = SCNGeometry(sources: [vertexSource], elements: [element])
-    geometry.firstMaterial = makeWireframeMaterial(color: majorityColor(for: anchor))
-    return geometry
+    return SCNGeometry(sources: [vertexSource], elements: [element])
   }
 
-  // MARK: - Material
+  // MARK: - Materials
 
-  private static func makeWireframeMaterial(color: UIColor) -> SCNMaterial {
+  private static func makeOutlineMaterial(color: UIColor) -> SCNMaterial {
     let mat = SCNMaterial()
-    mat.diffuse.contents = color
+    mat.diffuse.contents = color.withAlphaComponent(0.75)
     mat.fillMode = .lines
     mat.isDoubleSided = true
     mat.lightingModel = .constant
     mat.writesToDepthBuffer = false
+    mat.blendMode = .alpha
     return mat
   }
 
@@ -65,7 +81,7 @@ enum MeshAnchorRenderer {
     let offset = classificationSource.offset
     let base = classificationSource.buffer.contents()
 
-    // Sample every 4th face to keep this cheap on dense meshes.
+    // Sample every 4th face — keeps this cheap on dense meshes.
     var i = 0
     while i < faceCount {
       let raw = base.advanced(by: offset + stride * i)
@@ -79,19 +95,19 @@ enum MeshAnchorRenderer {
     return counts.max(by: { $0.value < $1.value })?.key ?? .none
   }
 
-  /// Hackathon palette — distinct + readable on top of camera feed.
+  /// Hackathon palette — distinct + readable on top of the camera feed.
   static func color(for classification: ARMeshClassification) -> UIColor {
     switch classification {
-    case .wall:    return UIColor(red: 1.00, green: 0.27, blue: 0.23, alpha: 0.60)
-    case .floor:   return UIColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 0.40)
-    case .ceiling: return UIColor(red: 0.35, green: 0.34, blue: 0.84, alpha: 0.40)
-    case .table:   return UIColor(red: 0.04, green: 0.52, blue: 1.00, alpha: 0.60)
-    case .seat:    return UIColor(red: 1.00, green: 0.62, blue: 0.04, alpha: 0.60)
-    case .door:    return UIColor(red: 0.75, green: 0.35, blue: 0.95, alpha: 0.60)
-    case .window:  return UIColor(red: 0.39, green: 0.82, blue: 1.00, alpha: 0.40)
+    case .wall:    return UIColor(red: 1.00, green: 0.27, blue: 0.23, alpha: 1.0)
+    case .floor:   return UIColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1.0)
+    case .ceiling: return UIColor(red: 0.35, green: 0.34, blue: 0.84, alpha: 1.0)
+    case .table:   return UIColor(red: 0.04, green: 0.52, blue: 1.00, alpha: 1.0)
+    case .seat:    return UIColor(red: 1.00, green: 0.62, blue: 0.04, alpha: 1.0)
+    case .door:    return UIColor(red: 0.75, green: 0.35, blue: 0.95, alpha: 1.0)
+    case .window:  return UIColor(red: 0.39, green: 0.82, blue: 1.00, alpha: 1.0)
     case .none:    fallthrough
     @unknown default:
-      return UIColor(white: 1.0, alpha: 0.25)
+      return UIColor(white: 1.0, alpha: 1.0)
     }
   }
 }
