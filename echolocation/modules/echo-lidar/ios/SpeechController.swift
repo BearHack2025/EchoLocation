@@ -133,7 +133,3 @@ extension SpeechController: AVAudioPlayerDelegate {
   }
 }
 
-extension SpeechController: AVSpeechSynthesizerDelegate {
-  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-  }
-}
