@@ -91,8 +91,8 @@ export const speak = async (
       throw new ElevenLabsError(`API error: ${error}`, response.status);
     }
 
-    const audioBlob = await response.blob();
-    const audioArrayBuffer = await audioBlob.arrayBuffer();
+    const audioArrayBuffer = await response.arrayBuffer();
+    const audioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
     const audioBase64 = arrayBufferToBase64(audioArrayBuffer);
     const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
 
