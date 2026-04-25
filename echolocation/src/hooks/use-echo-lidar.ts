@@ -29,6 +29,7 @@ export function useEchoLidar() {
   const sttReadyRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
+  const speechReleaseRef = useRef<((ok: boolean, message?: string) => void) | null>(null);
   const SILENCE_THRESHOLD_MS = 800;
 
   const isSupported = EchoLidarModule.isSupported();
@@ -42,6 +43,11 @@ export function useEchoLidar() {
     });
 
     return () => {
+      const releaseSpeech = speechReleaseRef.current;
+      speechReleaseRef.current = null;
+      if (releaseSpeech) {
+        releaseSpeech(false, 'Playback interrupted');
+      }
       if (playerRef.current) {
         playerRef.current.remove();
         playerRef.current = null;
@@ -50,6 +56,11 @@ export function useEchoLidar() {
   }, []);
 
   const playAudioUrl = useCallback(async (audioUrl: string): Promise<void> => {
+    const previousRelease = speechReleaseRef.current;
+    speechReleaseRef.current = null;
+    if (previousRelease) {
+      previousRelease(false, 'Playback interrupted');
+    }
     if (playerRef.current) {
       playerRef.current.remove();
       playerRef.current = null;
@@ -57,6 +68,21 @@ export function useEchoLidar() {
 
     const player = createAudioPlayer(audioUrl);
     playerRef.current = player;
+
+    let released = false;
+    const releaseGate = (ok: boolean, message?: string) => {
+      if (released) return;
+      released = true;
+      if (speechReleaseRef.current === releaseGate) {
+        speechReleaseRef.current = null;
+      }
+      if (ok) {
+        EchoLidarModule.onSpeechReady(audioUrl).catch(() => {});
+      } else {
+        EchoLidarModule.onSpeechFailed(message).catch(() => {});
+      }
+    };
+    speechReleaseRef.current = releaseGate;
 
     player.addListener('playbackStatusUpdate', (status) => {
       const playbackStatus = status as {
@@ -68,15 +94,39 @@ export function useEchoLidar() {
       if (playbackStatus.error) {
         console.error('[Audio] ElevenLabs playback failed:', playbackStatus.error);
         setError(`ElevenLabs playback failed: ${playbackStatus.error}`);
+        releaseGate(false, playbackStatus.error);
+        if (playerRef.current === player) {
+          playerRef.current.remove();
+          playerRef.current = null;
+        } else {
+          player.remove();
+        }
       }
 
       if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
-        playerRef.current?.remove();
-        playerRef.current = null;
+        releaseGate(true);
+        if (playerRef.current === player) {
+          playerRef.current.remove();
+          playerRef.current = null;
+        } else {
+          player.remove();
+        }
       }
     });
 
-    player.play();
+    try {
+      await player.play();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(`ElevenLabs playback failed: ${message}`);
+      releaseGate(false, message);
+      if (playerRef.current === player) {
+        playerRef.current.remove();
+        playerRef.current = null;
+      } else {
+        player.remove();
+      }
+    }
   }, []);
 
   const handleSpeechRequest = useCallback(async (event: { text: string; mode: string }) => {
@@ -89,7 +139,7 @@ export function useEchoLidar() {
       const message = e instanceof Error ? e.message : String(e);
       console.warn('[Audio] ElevenLabs TTS failed:', e);
       setError(`ElevenLabs voice failed: ${message}`);
-      EchoLidarModule.onSpeechFailed(message);
+      EchoLidarModule.onSpeechFailed(message).catch(() => {});
     }
   }, [playAudioUrl]);
 
@@ -183,6 +233,11 @@ export function useEchoLidar() {
     stopRealtimeSTT();
     setElevenSttActive(false);
     sttReadyRef.current = false;
+    const releaseSpeech = speechReleaseRef.current;
+    speechReleaseRef.current = null;
+    if (releaseSpeech) {
+      releaseSpeech(false, 'Playback interrupted');
+    }
     if (playerRef.current) {
       playerRef.current.remove();
       playerRef.current = null;

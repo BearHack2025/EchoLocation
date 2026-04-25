@@ -26,6 +26,7 @@ final class SpatialPingPlayer {
 
   func start() {
     guard !running else { return }
+    ensureAudioSession()
     setupEngine()
     pingBuffer = synthesizePing(frequency: baseFrequency)
     do {
@@ -44,6 +45,7 @@ final class SpatialPingPlayer {
     pingTimer = nil
     player.stop()
     engine.stop()
+    lastPingAt = 0
     running = false
   }
 
@@ -118,6 +120,7 @@ final class SpatialPingPlayer {
     let interval = pingInterval(forDistance: emitterDistance)
     guard now - lastPingAt >= interval else { return }
     lastPingAt = now
+    ensureAudioSession()
 
     // Re-synthesize buffer if pitch should change with distance.
     let frequency = pitch(forDistance: emitterDistance)
@@ -168,5 +171,25 @@ final class SpatialPingPlayer {
       samples[i] = sinf(twoPiF * t) * envelope * 0.6
     }
     return buffer
+  }
+
+  private func ensureAudioSession() {
+    let audioSession = AVAudioSession.sharedInstance()
+
+    do {
+      switch audioSession.category {
+      case .playback, .playAndRecord:
+        try audioSession.setActive(true)
+      default:
+        try audioSession.setCategory(
+          .playAndRecord,
+          mode: .default,
+          options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth, .allowBluetoothA2DP]
+        )
+        try audioSession.setActive(true)
+      }
+    } catch {
+      print("[SpatialPingPlayer] audio session error: \(error)")
+    }
   }
 }

@@ -128,31 +128,12 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     }
   }
 
+  // Called by JS once it has finished (or failed) playing the ElevenLabs clip
+  // through expo-audio. Native does not play the URL itself in this flow —
+  // the JS player owns playback, and this signal only releases the speech gate.
   func onAudioReady(audioUrl: String, completion: @escaping (Bool, String?) -> Void) {
     isAwaitingAudio = false
-
-    audioPlayer?.stop()
-    audioPlayer = nil
-    synthesizer.stopSpeaking(at: .immediate)
-
-    pendingCompletion = completion
-
-    guard let url = URL(string: audioUrl) else {
-      completion(false, "Invalid audio URL")
-      pendingCompletion = nil
-      return
-    }
-
-    do {
-      let player = try AVAudioPlayer(contentsOf: url)
-      player.delegate = self
-      audioPlayer = player
-      player.play()
-      lastSpokenAt = Date()
-    } catch {
-      completion(false, error.localizedDescription)
-      pendingCompletion = nil
-    }
+    completion(true, nil)
   }
 
   func onSpeechFailed() {
