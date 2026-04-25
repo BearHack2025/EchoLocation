@@ -145,6 +145,17 @@ public final class EchoLidarModule: Module {
       self?.session.labelTrigger.labelSource ?? "init"
     }
 
+    /// Toggle event-driven summarized speech (vs the always-on template loop).
+    /// `true` = danger triggers + Gemma summaries drive describe-mode speech.
+    /// `false` = falls back to the existing template phrasing per cooldown.
+    Function("setEventDrivenSpeech") { [weak self] (enabled: Bool) in
+      self?.session.setEventDrivenSpeech(enabled: enabled)
+    }
+
+    Function("getEventDrivenSpeech") { [weak self] () -> Bool in
+      self?.session.eventDrivenSpeechEnabled ?? true
+    }
+
     /// Returns the current thermal state as a string.
     Function("getThermalState") { () -> String in
       Self.thermalStateName(ProcessInfo.processInfo.thermalState)

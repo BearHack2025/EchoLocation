@@ -191,6 +191,35 @@ public final class GemmaInferenceController {
 
   static let QUICK_LABEL_PROMPT = "What is the dominant object in front of the camera? Reply with one word, lowercase."
 
+  static let DANGER_SUMMARY_PROMPT_TEMPLATE = """
+  You are warning a blind user about an obstacle they just got close to.
+
+  Recent sensor history (oldest → newest):
+  %@
+
+  Current frame is attached.
+
+  Reply with EXACTLY one short sentence (under 15 words):
+  - name the obstacle they're approaching
+  - mention exact distance and direction
+  - end with "step left", "step right", "slow down", or "stop now"
+
+  No greetings, no preamble.
+  """
+
+  /// Fast (≤30-token) one-sentence danger summary. The history string is the
+  /// caller's responsibility to format; pass the formatted lines as `history`.
+  /// Trims whitespace; raises on empty output.
+  func quickSummarize(history: String, image: UIImage) async throws -> String {
+    let prompt = String(format: GemmaInferenceController.DANGER_SUMMARY_PROMPT_TEMPLATE, history)
+    let raw = try await runInference(prompt: prompt, image: image)
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      throw InferenceError.backendFailed("empty summary")
+    }
+    return trimmed
+  }
+
   // MARK: - Inference (Phase 2 + Phase 3)
 
   func describeScene(prompt: String) async throws -> SceneOutputParser.Result {
@@ -256,14 +285,29 @@ final class MockInferenceBackend: InferenceBackend {
     "chair", "table", "wall", "door", "backpack",
     "monitor", "laptop", "bookshelf", "floor", "obstacle"
   ]
+  private let summaryAnswers = [
+    "Wall ahead, 0.8 meters, slow down.",
+    "Chair on your right, 0.7 meters, step left.",
+    "Doorway directly ahead, 0.9 meters, slow down.",
+    "Table edge to your left, 0.6 meters, step right.",
+    "Backpack on the floor ahead, 0.5 meters, stop now."
+  ]
 
   func generate(prompt: String, image: UIImage, maxTokens: Int) async throws -> String {
-    // Quick label has its own short delay (matches a real <600ms vision call).
+    // Quick label — short, single word, fast (matches a real <600ms vision call).
     if prompt == GemmaInferenceController.QUICK_LABEL_PROMPT {
       try await Task.sleep(nanoseconds: UInt64.random(in: 250_000_000...600_000_000))
       let idx = rotation % quickLabelAnswers.count
       rotation += 1
       return quickLabelAnswers[idx]
+    }
+
+    // Danger summary — short sentence, fast (signature: starts with "You are warning a blind user").
+    if prompt.contains("warning a blind user") {
+      try await Task.sleep(nanoseconds: UInt64.random(in: 300_000_000...700_000_000))
+      let idx = rotation % summaryAnswers.count
+      rotation += 1
+      return summaryAnswers[idx]
     }
 
     // Other (scene / direction) — realistic 1.5–2.5s on hackathon target hardware.

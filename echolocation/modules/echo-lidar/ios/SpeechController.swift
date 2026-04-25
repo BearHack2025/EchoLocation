@@ -21,6 +21,11 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   private var reservationExpiresAt: Date = .distantPast
   private let reservationSafetyWindow: TimeInterval = 10
 
+  /// When true, the always-on template loop is suppressed for `describe` mode —
+  /// speech is driven by the event-driven Gemma path in EchoLidarSession instead.
+  /// Echo mode is unaffected.
+  var eventDrivenActive: Bool = true
+
   override init() {
     super.init()
     synthesizer.delegate = self
@@ -46,6 +51,11 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     }
     guard !isReserved else { return }
     guard mode != "quiet" else { return }
+
+    // When event-driven speech is active, the describe-mode template loop is
+    // suppressed — EchoLidarSession's danger detector + Gemma summarizer
+    // drives speech instead. Echo mode (short cues per change) still flows.
+    guard !eventDrivenActive || mode == "echo" else { return }
 
     // Hard cooldown: never speak more than once per `alwaysOnCooldownSeconds`
     // on the always-on path. Blind users find rapid-fire utterances overwhelming.
@@ -96,6 +106,13 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   /// Bypasses throttling / repeat suppression — orchestrator owns deduping.
   func say(_ text: String) {
     speak(text)
+  }
+
+  /// Pure-function fallback phrasing identical to what the always-on template
+  /// path would produce. Used by EchoLidarSession when Gemma fails / is not
+  /// ready, so the user always gets *some* audible warning at trigger time.
+  func describeFallback(direction: String, distance: Double, label: String) -> String {
+    return describePhrase(direction: direction, distance: distance, label: label)
   }
 
   // MARK: - Private

@@ -45,6 +45,10 @@ type NativeEchoLidarModule = {
   setLabelSource(useGemma: boolean): void;
   getLabelSource(): string;
 
+  // Event-driven summarized speech toggle (vs template loop)
+  setEventDrivenSpeech(enabled: boolean): void;
+  getEventDrivenSpeech(): boolean;
+
   // Thermal state
   getThermalState(): string;
 };
@@ -87,6 +91,8 @@ const noopStub: NativeEchoLidarModule = {
   }),
   setLabelSource: () => {},
   getLabelSource: () => 'init',
+  setEventDrivenSpeech: () => {},
+  getEventDrivenSpeech: () => true,
   getThermalState: () => 'nominal',
 };
 
