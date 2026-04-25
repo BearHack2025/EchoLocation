@@ -1,12 +1,20 @@
-import { NativeModule, requireNativeModule } from 'expo';
+import { EventEmitter, requireNativeModule } from 'expo-modules-core';
 
-import { EchoLidarModuleEvents } from './EchoLidar.types';
+import type { EchoLidarModuleEvents, EchoMode, EchoSupportStatus } from './EchoLidar.types';
 
-declare class EchoLidarModule extends NativeModule<EchoLidarModuleEvents> {
-  PI: number;
-  hello(): string;
-  setValueAsync(value: string): Promise<void>;
-}
+type NativeEchoLidarModule = {
+  isSupported(): boolean;
+  supportsDepth(): boolean;
+  supportsMeshClassification(): boolean;
+  getSupportStatus(): EchoSupportStatus;
+  start(mode?: EchoMode): Promise<void>;
+  stop(): Promise<void>;
+};
 
-// This call loads the native module object from the JSI.
-export default requireNativeModule<EchoLidarModule>('EchoLidar');
+const EchoLidarModule = requireNativeModule<NativeEchoLidarModule>('EchoLidar');
+
+export const EchoLidarEmitter = new EventEmitter<EchoLidarModuleEvents>(
+  EchoLidarModule as never
+);
+
+export default EchoLidarModule;
