@@ -34,12 +34,7 @@ export function useEchoLidar() {
         return;
       }
 
-      await EchoLidarModule.onSpeechReady(audioUrl, (success, err) => {
-        if (!success) {
-          console.warn('[Audio] Audio playback failed:', err);
-          EchoLidarModule.onSpeechFailed(err ?? 'Playback failed');
-        }
-      });
+      await EchoLidarModule.onSpeechReady(audioUrl);
     } catch (e) {
       console.warn('[Audio] TTS failed, using builtin TTS:', e);
       EchoLidarModule.onSpeechFailed(e instanceof Error ? e.message : String(e));
@@ -99,14 +94,15 @@ export function useEchoLidar() {
     return null;
   };
 
-  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe', useBuiltinSpeech: boolean = true) => {
+  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe', useBuiltinSpeech?: boolean) => {
+    const shouldUseBuiltinSpeech = useBuiltinSpeech ?? !isElevenSttConfigured();
     setError(null);
-    setUseBuiltin(useBuiltinSpeech);
+    setUseBuiltin(shouldUseBuiltinSpeech);
     try {
-      await EchoLidarModule.start(mode, useBuiltinSpeech);
+      await EchoLidarModule.start(mode, shouldUseBuiltinSpeech);
       setRunning(true);
       try {
-        await EchoLidarModule.startVoiceCommands();
+        await EchoLidarModule.startVoiceCommands(shouldUseBuiltinSpeech);
         setListening(true);
       } catch (voiceError: unknown) {
         setListening(false);
@@ -138,7 +134,7 @@ export function useEchoLidar() {
         await Speech.speak(text, { language: 'en-US', rate: 0.9 });
         return true;
       }
-      await EchoLidarModule.onSpeechReady(audioUrl, () => {});
+      await EchoLidarModule.onSpeechReady(audioUrl);
       return true;
     } catch (e) {
       console.warn('[Audio] Voice command TTS failed:', e);
@@ -158,7 +154,12 @@ export function useEchoLidar() {
 
     const audioChunkSub = EchoLidarEmitter.addListener('onAudioChunk', (event: AudioChunkEvent) => {
       if (sttReadyRef.current && elevenSttActive) {
-        const int16Array = new Int16Array(event.data);
+        const byteArray = Uint8Array.from(event.data);
+        const int16Array = new Int16Array(
+          byteArray.buffer,
+          byteArray.byteOffset,
+          Math.floor(byteArray.byteLength / Int16Array.BYTES_PER_ELEMENT)
+        );
         sendSTTAudioChunk(int16Array);
 
         if (silenceTimerRef.current) {

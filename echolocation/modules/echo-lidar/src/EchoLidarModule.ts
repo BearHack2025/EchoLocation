@@ -9,9 +9,9 @@ type NativeEchoLidarModule = {
   getSupportStatus(): EchoSupportStatus;
   start(mode?: EchoMode, useBuiltin?: boolean): Promise<void>;
   stop(): Promise<void>;
-  startVoiceCommands(): Promise<void>;
+  startVoiceCommands(useSystemSpeechRecognition?: boolean): Promise<void>;
   stopVoiceCommands(): Promise<void>;
-  onSpeechReady(audioUrl: string, completion: (success: boolean, error?: string) => void): Promise<void>;
+  onSpeechReady(audioUrl: string): Promise<void>;
   onSpeechFailed(error?: string): Promise<void>;
   setBuiltinSpeechEnabled(enabled: boolean): Promise<void>;
 };

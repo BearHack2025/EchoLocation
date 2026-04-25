@@ -9,13 +9,11 @@ import {
 } from './elevenlabsTts';
 import {
   connectRealtimeSTT,
-  disconnectRealtimeSTT,
   isConnected,
   transcribe as elevenTranscribe,
   isConfigured as isElevenSttConfigured,
   type ElevenLabsSTTConfig,
   type ElevenLabsSTTResponse,
-  type STTCallbacks,
 } from './elevenlabsStt';
 import {
   logAudioSuccess,

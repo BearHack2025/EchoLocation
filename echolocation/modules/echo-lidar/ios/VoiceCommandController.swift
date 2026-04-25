@@ -33,13 +33,18 @@ final class VoiceCommandController: NSObject {
   private let commandCooldown: TimeInterval = 1.5
   private var audioConverter: AVAudioConverter?
   private let targetSampleRate: Double = 16000
+  private var useSystemSpeechRecognition = true
 
-  func startListening(onCommand: @escaping ([String: Any]) -> Void) async throws {
-    guard let speechRecognizer, speechRecognizer.isAvailable else {
-      throw VoiceCommandControllerError.speechRecognizerUnavailable
+  func startListening(useSystemSpeechRecognition: Bool, onCommand: @escaping ([String: Any]) -> Void) async throws {
+    self.useSystemSpeechRecognition = useSystemSpeechRecognition
+
+    if useSystemSpeechRecognition {
+      guard let speechRecognizer, speechRecognizer.isAvailable else {
+        throw VoiceCommandControllerError.speechRecognizerUnavailable
+      }
     }
 
-    try await requestPermissions()
+    try await requestPermissions(needsSpeechRecognition: useSystemSpeechRecognition)
 
     self.onCommand = onCommand
     isListening = true
@@ -47,7 +52,11 @@ final class VoiceCommandController: NSObject {
     lastEmittedAt = .distantPast
 
     try configureAudioSession()
-    try startRecognitionLoop()
+    if useSystemSpeechRecognition {
+      try startRecognitionLoop()
+    } else {
+      try startAudioStreamingLoop()
+    }
   }
 
   func stopListening() {
@@ -71,15 +80,17 @@ final class VoiceCommandController: NSObject {
     }
   }
 
-  private func requestPermissions() async throws {
-    let speechStatus = await withCheckedContinuation { continuation in
-      SFSpeechRecognizer.requestAuthorization { status in
-        continuation.resume(returning: status)
+  private func requestPermissions(needsSpeechRecognition: Bool) async throws {
+    if needsSpeechRecognition {
+      let speechStatus = await withCheckedContinuation { continuation in
+        SFSpeechRecognizer.requestAuthorization { status in
+          continuation.resume(returning: status)
+        }
       }
-    }
 
-    guard speechStatus == .authorized else {
-      throw VoiceCommandControllerError.speechRecognitionDenied
+      guard speechStatus == .authorized else {
+        throw VoiceCommandControllerError.speechRecognitionDenied
+      }
     }
 
     let microphoneGranted = await withCheckedContinuation { continuation in
@@ -115,23 +126,10 @@ final class VoiceCommandController: NSObject {
     request.requiresOnDeviceRecognition = false
     recognitionRequest = request
 
-    let inputNode = audioEngine.inputNode
-    let recordingFormat = inputNode.outputFormat(forBus: 0)
-
-    let targetFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: targetSampleRate, channels: 1, interleaved: true)
-    audioConverter = AVAudioConverter(from: recordingFormat, to: targetFormat!)
-
-    inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { [weak self] buffer, _ in
+    try installAudioTap { [weak self] buffer in
       guard let self else { return }
-
       self.recognitionRequest?.append(buffer)
-
       self.convertAndSendAudio(buffer: buffer)
-    }
-
-    audioEngine.prepare()
-    if !audioEngine.isRunning {
-      try audioEngine.start()
     }
 
     recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, error in
@@ -146,6 +144,36 @@ final class VoiceCommandController: NSObject {
       if result?.isFinal == true || error != nil {
         self.restartIfNeeded()
       }
+    }
+  }
+
+  private func startAudioStreamingLoop() throws {
+    recognitionTask?.cancel()
+    recognitionTask = nil
+    recognitionRequest?.endAudio()
+    recognitionRequest = nil
+    audioEngine.inputNode.removeTap(onBus: 0)
+
+    try installAudioTap { [weak self] buffer in
+      self?.convertAndSendAudio(buffer: buffer)
+    }
+  }
+
+  private func installAudioTap(_ handler: @escaping (AVAudioPCMBuffer) -> Void) throws {
+    let inputNode = audioEngine.inputNode
+    let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+    let targetFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: targetSampleRate, channels: 1, interleaved: true)
+    audioConverter = AVAudioConverter(from: recordingFormat, to: targetFormat!)
+
+    inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { [weak self] buffer, _ in
+      guard let self else { return }
+      handler(buffer)
+    }
+
+    audioEngine.prepare()
+    if !audioEngine.isRunning {
+      try audioEngine.start()
     }
   }
 
@@ -175,6 +203,10 @@ final class VoiceCommandController: NSObject {
   }
 
   private func restartIfNeeded() {
+    guard useSystemSpeechRecognition else {
+      return
+    }
+
     guard isListening else {
       return
     }

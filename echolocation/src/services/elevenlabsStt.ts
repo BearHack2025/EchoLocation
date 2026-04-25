@@ -1,6 +1,6 @@
 import { logAudioError, logAudioRequest, logAudioSuccess } from './audio-logger';
 
-const ELEVENLABS_WS_BASE = 'wss://api.elevenlabs.io';
+const ELEVENLABS_WS_BASE = 'wss://api.elevenlabs.io/v1/speech-to-text/realtime';
 const ELEVENLABS_HTTP_BASE = 'https://api.elevenlabs.io/v1';
 
 export class ElevenLabsSTTError extends Error {
@@ -47,6 +47,8 @@ class ElevenLabsSTTConnection {
   private connected = false;
   private sessionId: string | null = null;
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
+  private connectResolve: (() => void) | null = null;
+  private connectReject: ((error: Error) => void) | null = null;
 
   constructor(apiKey: string, modelId: string, callbacks: STTCallbacks) {
     this.apiKey = apiKey;
@@ -55,17 +57,38 @@ class ElevenLabsSTTConnection {
   }
 
   async connect(): Promise<void> {
-    const startTime = Date.now();
     logAudioRequest('elevenlabs-stt', 'connecting');
 
     return new Promise((resolve, reject) => {
-      const url = `${ELEVENLABS_WS_BASE}?api_key=${this.apiKey}&model_id=${this.modelId}&language_code=eng`;
+      const query = new URLSearchParams({
+        model_id: this.modelId,
+        language_code: 'en',
+        audio_format: 'pcm_16000',
+        include_timestamps: 'false',
+        include_language_detection: 'false',
+        commit_strategy: 'manual',
+      });
+      const url = `${ELEVENLABS_WS_BASE}?${query.toString()}`;
+      this.connectResolve = resolve;
+      this.connectReject = reject;
 
       this.timeoutId = setTimeout(() => {
-        reject(new ElevenLabsSTTError('Connection timeout'));
+        this.failConnect(new ElevenLabsSTTError('Connection timeout'));
       }, STT_TIMEOUT_MS);
 
-      this.ws = new WebSocket(url);
+      const ReactNativeWebSocket = WebSocket as unknown as {
+        new (
+          url: string,
+          protocols?: string | string[],
+          options?: { headers?: Record<string, string> }
+        ): WebSocket;
+      };
+
+      this.ws = new ReactNativeWebSocket(url, undefined, {
+        headers: {
+          'xi-api-key': this.apiKey,
+        },
+      });
 
       this.ws.onopen = () => {
         if (this.timeoutId) {
@@ -74,7 +97,7 @@ class ElevenLabsSTTConnection {
         this.timeoutId = setTimeout(() => {
           if (!this.connected) {
             this.disconnect();
-            reject(new Error('Connection timeout'));
+            this.failConnect(new ElevenLabsSTTError('Connection timeout'));
           }
         }, STT_TIMEOUT_MS);
       };
@@ -90,7 +113,7 @@ class ElevenLabsSTTConnection {
         const message = 'WebSocket error';
         logAudioError('elevenlabs-stt', message);
         this.callbacks.onError?.(message);
-        reject(new ElevenLabsSTTError(message));
+        this.failConnect(new ElevenLabsSTTError(message));
       };
 
       this.ws.onclose = (event) => {
@@ -110,13 +133,14 @@ class ElevenLabsSTTConnection {
   private handleMessage(data: string) {
     try {
       const message = JSON.parse(data);
+      const messageType = message.message_type ?? message.type;
 
-      switch (message.type) {
-        case 'session_start':
+      switch (messageType) {
+        case 'session_started':
           this.connected = true;
           this.sessionId = message.session_id;
-          const latency = Date.now();
-          logAudioSuccess('elevenlabs-stt', 'connected', latency);
+          logAudioSuccess('elevenlabs-stt', 'connected', 0);
+          this.resolveConnect();
           this.callbacks.onConnected?.();
           break;
 
@@ -124,19 +148,31 @@ class ElevenLabsSTTConnection {
           this.callbacks.onTranscript?.(message.text, false);
           break;
 
-        case 'transcript':
+        case 'committed_transcript':
+        case 'committed_transcript_with_timestamps':
           this.callbacks.onTranscript?.(message.text, true);
           break;
 
         case 'error':
-          logAudioError('elevenlabs-stt', message.error?.message || 'Unknown error');
-          this.callbacks.onError?.(message.error?.message || 'Unknown error');
-          break;
-
-        case 'audio':
+          {
+            const errorMessage = message.error?.message || message.message || 'Unknown error';
+            logAudioError('elevenlabs-stt', errorMessage);
+            this.failConnect(new ElevenLabsSTTError(errorMessage));
+            this.callbacks.onError?.(errorMessage);
+          }
           break;
 
         default:
+          if (typeof message.text === 'string' && messageType?.includes('transcript')) {
+            const isFinal = messageType.includes('committed');
+            this.callbacks.onTranscript?.(message.text, isFinal);
+            break;
+          }
+          if (typeof message.message === 'string' && messageType?.toLowerCase().includes('error')) {
+            logAudioError('elevenlabs-stt', message.message);
+            this.failConnect(new ElevenLabsSTTError(message.message));
+            this.callbacks.onError?.(message.message);
+          }
           break;
       }
     } catch (e) {
@@ -150,8 +186,9 @@ class ElevenLabsSTTConnection {
     }
 
     const message = {
-      type: 'audio',
-      audio_data: Array.from(new Uint8Array(audioData)),
+      message_type: 'input_audio_chunk',
+      audio_base_64: uint8ArrayToBase64(new Uint8Array(audioData)),
+      sample_rate: 16000,
     };
 
     this.ws.send(JSON.stringify(message));
@@ -163,8 +200,9 @@ class ElevenLabsSTTConnection {
     }
 
     const message = {
-      type: 'audio',
-      audio_data: Array.from(audioChunk),
+      message_type: 'input_audio_chunk',
+      audio_base_64: int16ArrayToBase64(audioChunk),
+      sample_rate: 16000,
     };
 
     this.ws.send(JSON.stringify(message));
@@ -175,7 +213,12 @@ class ElevenLabsSTTConnection {
       return;
     }
 
-    this.ws.send(JSON.stringify({ type: 'commit' }));
+    this.ws.send(JSON.stringify({
+      message_type: 'input_audio_chunk',
+      audio_base_64: '',
+      sample_rate: 16000,
+      commit: true,
+    }));
   }
 
   disconnect(): void {
@@ -191,6 +234,24 @@ class ElevenLabsSTTConnection {
 
     this.connected = false;
     this.sessionId = null;
+    this.connectResolve = null;
+    this.connectReject = null;
+  }
+
+  private resolveConnect(): void {
+    if (this.connectResolve) {
+      this.connectResolve();
+      this.connectResolve = null;
+      this.connectReject = null;
+    }
+  }
+
+  private failConnect(error: Error): void {
+    if (this.connectReject) {
+      this.connectReject(error);
+      this.connectReject = null;
+      this.connectResolve = null;
+    }
   }
 }
 
@@ -311,3 +372,24 @@ export const transcribeFromBase64 = async (
   const blob = new Blob([bytes], { type: 'audio/wav' });
   return transcribe(blob, config);
 };
+
+function int16ArrayToBase64(audioChunk: Int16Array): string {
+  const bytes = new Uint8Array(
+    audioChunk.buffer,
+    audioChunk.byteOffset,
+    audioChunk.byteLength
+  );
+  return uint8ArrayToBase64(bytes);
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}

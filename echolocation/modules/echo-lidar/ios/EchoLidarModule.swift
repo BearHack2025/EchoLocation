@@ -74,7 +74,7 @@ public final class EchoLidarModule: Module {
       self?.sessionController.stop()
     }
 
-    AsyncFunction("startVoiceCommands") { [weak self] in
+    AsyncFunction("startVoiceCommands") { [weak self] (useSystemSpeechRecognition: Bool?) in
       guard let self else {
         return
       }
@@ -84,7 +84,7 @@ public final class EchoLidarModule: Module {
         self?.sendEvent("onAudioChunk", ["data": byteArray])
       }
 
-      try await self.voiceCommandController.startListening { payload in
+      try await self.voiceCommandController.startListening(useSystemSpeechRecognition: useSystemSpeechRecognition ?? true) { payload in
         self.sendEvent("onVoiceCommand", payload)
       }
     }
