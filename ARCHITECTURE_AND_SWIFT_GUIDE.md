@@ -537,11 +537,12 @@ This project uses ElevenLabs for premium voice output (TTS) with different voice
 | File | Purpose |
 |------|---------|
 | `src/services/audio-logger.ts` | Structured logging to console |
-| `src/services/audio-service.ts` | Voice router with fallback logic, config helpers |
+| `src/services/audio-service.ts` | Voice router, TTS/STT functions, fallback logic |
 | `src/services/elevenlabsTts.ts` | ElevenLabs TTS API integration |
-| `src/services/elevenlabsStt.ts` | ElevenLabs STT API integration |
+| `src/services/elevenlabsStt.ts` | ElevenLabs STT WebSocket client |
 | `src/hooks/use-echo-lidar.ts` | Speech request handler, hybrid TTS support |
 | `modules/echo-lidar/ios/SpeechController.swift` | Swift speech coordinator, built-in TTS routing |
+| `modules/echo-lidar/ios/VoiceCommandController.swift` | Swift voice command recognition |
 | `modules/echo-lidar/ios/EchoLidarModule.swift` | Native module with TTS config functions |
 | `modules/echo-lidar/ios/EchoLidarSession.swift` | AR session with TTS mode configuration |
 | `modules/echo-lidar/src/EchoLidarModule.ts` | JS native module wrapper |
@@ -592,6 +593,33 @@ Speech requests flow through events with two modes:
 
 **Default behavior**: `useBuiltinSpeech=true` (uses built-in TTS by default)
 
+### Voice I/O Summary
+
+This project handles both voice input (speech recognition) and voice output (text-to-speech).
+
+| Direction | Technology | When Used |
+|-----------|------------|-----------|
+| **Input (voice commands)** | iOS SFSpeechRecognizer | Primary - always available |
+| **Input (voice commands)** | ElevenLabs Scribe | Optional - higher accuracy (WebSocket streaming) |
+| **Output (voice commands)** | ElevenLabs TTS | Premium voice responses |
+| **Output (continuous)** | iOS AVSpeechSynthesizer | Free, instant LiDAR feedback |
+
+### Voice Input Flow
+
+Voice commands are captured in Swift using VoiceCommandController:
+
+1. **Capture**: iOS AVAudioEngine records microphone input
+2. **Recognize**: SFSpeechRecognizer processes audio in real-time
+3. **Match**: Transcript is matched against known commands (left, right, ahead, repeat)
+4. **Emit**: `onVoiceCommand` event sent to JS layer
+
+### Voice Output Flow
+
+Speech is handled through the SpeechController in Swift with two paths:
+
+1. **Built-in**: AVSpeechSynthesizer handles speech directly in Swift
+2. **ElevenLabs**: onSpeechRequest event → JS audio-service → native playback
+
 **Fallback triggers**: Builtin iOS `AVSpeechSynthesizer` when:
 - `useBuiltinSpeech=true` (always uses builtin)
 - ElevenLabs API is not configured
@@ -605,6 +633,85 @@ Speech requests flow through events with two modes:
 - Do not use ElevenLabs for real-time obstacle warnings without fallback (latency/connectivity)
 - Do not commit API keys to version control
 - Do not disable built-in TTS for continuous feedback (unnecessary API costs)
+
+## ElevenLabs STT Integration
+
+This project uses ElevenLabs for speech-to-text (STT) to transcribe voice commands. The implementation uses WebSocket streaming for real-time transcription.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              VoiceCommandController (Swift)                     │
+│  • Uses iOS SFSpeechRecognizer for voice capture                │
+│  • Runs speech recognition loop continuously                  │
+│  • Matches transcript against known commands                    │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓ onVoiceCommand
+┌─────────────────────────────────────────────────────────────────┐
+│                    audio-service.ts                              │
+│  • startRealtimeSTT(callbacks)  - Connect to ElevenLabs WebSocket│
+│  • sendSTTAudioChunk(audio)     - Stream audio data              │
+│  • commitSTT()                 - Signal end of speech          │
+│  • stopRealtimeSTT()           - Disconnect                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### STT Functions
+
+| Function | Purpose |
+|----------|---------|
+| `startRealtimeSTT(callbacks)` | Connect to ElevenLabs WebSocket |
+| `sendSTTAudioChunk(audioData: Int16Array)` | Stream audio to ElevenLabs |
+| `commitSTT()` | Signal end of speech for final transcript |
+| `stopRealtimeSTT()` | Disconnect WebSocket |
+| `isSTTConnected()` | Check connection status |
+
+### Callbacks
+
+```typescript
+interface RealtimeSTTCallbacks {
+  onTranscript?: (text: string, isFinal: boolean) => void;
+  onError?: (error: string) => void;
+  onConnected?: () => void;
+  onDisconnected?: () => void;
+}
+```
+
+### Configuration
+
+- **Model**: `scribe_v2_realtime`
+- **Endpoint**: `wss://api.elevenlabs.io`
+- **Timeout**: 10 seconds
+
+### Usage
+
+```typescript
+const connected = await startRealtimeSTT({
+  onTranscript: (text, isFinal) => {
+    if (isFinal) {
+      console.log('[STT] Final:', text);
+    }
+  },
+  onConnected: () => console.log('[STT] Connected'),
+  onError: (error) => console.error('[STT] Error:', error),
+});
+
+if (connected) {
+  sendSTTAudioChunk(audioBuffer);
+  commitSTT();
+}
+```
+
+### Fallback
+
+If ElevenLabs STT fails to connect or times out, the system falls back to iOS built-in speech recognition (SFSpeechRecognizer in VoiceCommandController.swift). The built-in recognizer is:
+
+- Always available (no API key required)
+- Works offline
+- Free to use
+
+The fallback happens automatically in the Swift layer.
 
 ## Hybrid TTS Strategy
 

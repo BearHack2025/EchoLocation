@@ -8,10 +8,14 @@ import {
   type ElevenLabsTTSResponse,
 } from './elevenlabsTts';
 import {
+  connectRealtimeSTT,
+  disconnectRealtimeSTT,
+  isConnected,
   transcribe as elevenTranscribe,
   isConfigured as isElevenSttConfigured,
   type ElevenLabsSTTConfig,
   type ElevenLabsSTTResponse,
+  type STTCallbacks,
 } from './elevenlabsStt';
 import {
   logAudioSuccess,
@@ -177,6 +181,72 @@ export const stopSpeaking = async (): Promise<void> => {
 
 export const clearAudioCache = (): void => {
   clearElevenCache();
+};
+
+export interface RealtimeSTTCallbacks {
+  onTranscript?: (text: string, isFinal: boolean) => void;
+  onError?: (error: string) => void;
+  onConnected?: () => void;
+  onDisconnected?: () => void;
+}
+
+let sttConnection: Awaited<ReturnType<typeof connectRealtimeSTT>> | null = null;
+
+export const startRealtimeSTT = async (
+  callbacks: RealtimeSTTCallbacks
+): Promise<boolean> => {
+  if (!currentConfig.useElevenLabs || !isElevenSttConfigured()) {
+    logBuiltinFallback('STT', 'ElevenLabs STT not configured', 'describe');
+    return false;
+  }
+
+  try {
+    sttConnection = await connectRealtimeSTT({
+      callbacks: {
+        onTranscript: callbacks.onTranscript,
+        onError: (error) => {
+          logAudioError('elevenlabs-stt', error);
+          callbacks.onError?.(error);
+        },
+        onConnected: () => {
+          logAudioSuccess('elevenlabs-stt', 'realtime connected', 0);
+          callbacks.onConnected?.();
+        },
+        onDisconnected: () => {
+          callbacks.onDisconnected?.();
+        },
+      },
+    });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logAudioError('elevenlabs-stt', message);
+    logBuiltinFallback('STT', message, 'describe');
+    return false;
+  }
+};
+
+export const sendSTTAudioChunk = (audioData: Int16Array): void => {
+  if (sttConnection) {
+    sttConnection.sendAudioChunk(audioData);
+  }
+};
+
+export const commitSTT = (): void => {
+  if (sttConnection) {
+    sttConnection.commit();
+  }
+};
+
+export const stopRealtimeSTT = (): void => {
+  if (sttConnection) {
+    sttConnection.disconnect();
+    sttConnection = null;
+  }
+};
+
+export const isSTTConnected = (): boolean => {
+  return isConnected();
 };
 
 function withTimeout<T>(

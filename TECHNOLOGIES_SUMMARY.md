@@ -77,9 +77,8 @@ Important:
 
 It is used for:
 
-- text-to-speech
-- optional speech-to-text
-- optional voice interaction
+- text-to-speech (TTS) - voice output for commands and responses
+- speech-to-text (STT) - WebSocket integration for voice input
 
 In this project, `ElevenLabs` answers:
 
