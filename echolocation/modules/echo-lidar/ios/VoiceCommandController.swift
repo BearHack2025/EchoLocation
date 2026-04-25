@@ -19,7 +19,6 @@ enum VoiceCommandControllerError: LocalizedError {
   }
 }
 
-@MainActor
 final class VoiceCommandController: NSObject {
   private let audioEngine = AVAudioEngine()
   private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Ship a working iPhone-only hackathon demo where the app:
+Ship a working iPhone-only hackathon demo for a **head-worn spatial awareness assistant** where the system:
 
 1. continuously monitors nearby obstacles with LiDAR
 2. responds to a short voice command like `what's ahead`
@@ -10,20 +10,26 @@ Ship a working iPhone-only hackathon demo where the app:
 4. labels the scene with `ML Kit`
 5. summarizes the result with `Gemma 4`
 6. speaks the response with `ElevenLabs`
+7. optionally recognizes familiar places using image embeddings
 
-This project should be framed as a **short-range spatial awareness aid**, not a replacement for a walking stick, cane, guide dog, or navigation tool.
+This project should be framed as a **short-range spatial awareness aid** or **head-worn wearable companion**, not a replacement for a walking stick, cane, guide dog, or navigation tool.
 
 ## Demo Story
 
-The user points the phone forward and says:
+The user wears the setup on their head or chest and says:
 
 - `What's ahead?`
 - `What's on my left?`
 - `Repeat`
+- `Is this familiar?`
 
 The app responds with one short spoken sentence such as:
 
 `There's a chair slightly right, about a meter away.`
+
+For a familiar-place query, the app can respond with:
+
+`This looks like the study lounge you visited earlier.`
 
 ## Non-Goals
 
@@ -35,6 +41,7 @@ Do not spend hackathon time on:
 - full navigation claims
 - arbitrary object recognition perfection
 - a second camera stack if ARKit can provide the image
+- a full SLAM or robotics-grade map
 
 ## Build Order
 
@@ -79,6 +86,8 @@ Trigger the rich describe flow with a tiny command set.
 - `what's on my left`
 - `what's on my right`
 - `repeat`
+- `is this familiar`
+- `save this place`
 
 ### Recommended Implementation
 
@@ -174,7 +183,78 @@ If no useful labels are returned, continue with LiDAR-only input.
 - one voice command can produce a list of likely labels
 - labels are available in JavaScript for the `Gemma` prompt
 
-## Phase 5: Add Gemma 4 Summarization
+## Phase 5: Add Visual Memory With Image Embeddings
+
+### Objective
+
+Let the user ask whether the current place looks familiar.
+
+### Product Behavior
+
+Supported memory-style commands:
+
+- `is this familiar`
+- `have I been here before`
+- `save this place`
+
+### Minimal Hackathon Version
+
+Do not build a full navigation map. Build a lightweight **visual memory**:
+
+1. capture a snapshot
+2. compute an image embedding
+3. store the embedding with metadata
+4. compare the current embedding against saved embeddings
+5. if similarity is high enough, return the closest match
+
+### Recommended Stored Metadata
+
+```ts
+type PlaceMemory = {
+  id: string;
+  embedding: number[];
+  createdAtMs: number;
+  note?: string;
+  topLabels: string[];
+  meshLabel?: string;
+  lastKnownDirection?: 'left' | 'center' | 'right' | 'unknown';
+};
+```
+
+### Recommended Matching Rule
+
+- use cosine similarity
+- only report a match above a fixed threshold
+- keep top 1 match for the hackathon
+- if confidence is weak, say it does not look familiar yet
+
+### Suggested User Experience
+
+When the user says `save this place`:
+
+- capture a snapshot
+- compute the embedding
+- store it locally as a remembered place
+
+When the user says `is this familiar`:
+
+- capture a snapshot
+- compute the current embedding
+- compare to remembered places
+- if matched, respond with a short sentence
+
+### Important Scope Rule
+
+This is **place similarity**, not true localization.
+Do not claim exact indoor navigation or precise mapping.
+
+### Definition of Done
+
+- app can save at least one remembered place
+- app can compare the current scene against saved memories
+- app can speak whether the place appears familiar
+
+## Phase 6: Add Gemma 4 Summarization
 
 ### Objective
 
@@ -187,6 +267,7 @@ Turn structured LiDAR + vision inputs into one short useful sentence.
 - direction
 - mesh label
 - top `ML Kit` labels
+- optional familiar-place match
 
 ### Prompt
 
@@ -199,6 +280,7 @@ Given:
 - direction: {{direction}}
 - mesh label: {{mesh_label}}
 - camera labels: {{camera_labels}}
+- familiar match: {{familiar_match}}
 
 Reply with exactly one short sentence under 15 words.
 No preamble. No bullets. No safety disclaimer.
@@ -219,7 +301,7 @@ If `Gemma` fails, return:
 - the app can turn structured scene data into one sentence
 - the sentence is short and consistent enough for a demo
 
-## Phase 6: Add ElevenLabs Playback
+## Phase 7: Add ElevenLabs Playback
 
 ### Objective
 
@@ -251,7 +333,7 @@ Do not let both systems speak the same event.
 - one voice command results in one polished spoken response
 - repeated commands do not overlap or spam audio
 
-## Phase 7: Optional OCR / Text Reading
+## Phase 8: Optional OCR / Text Reading
 
 ### Objective
 
@@ -291,7 +373,7 @@ type EchoUpdate = {
 
 ```ts
 type VoiceCommand = {
-  command: 'ahead' | 'left' | 'right' | 'repeat';
+  command: 'ahead' | 'left' | 'right' | 'repeat' | 'familiar' | 'save_place';
   transcript: string;
   timestampMs: number;
 };
@@ -304,6 +386,11 @@ type RichDescribeInput = {
   command: VoiceCommand['command'];
   update: EchoUpdate | null;
   cameraLabels: string[];
+  familiarMatch?: {
+    id: string;
+    similarity: number;
+    note?: string;
+  } | null;
 };
 ```
 
@@ -320,6 +407,8 @@ type RichDescribeResult = {
 
 - `modules/echo-lidar/src/describeScene.ts`
 - `src/lib/mlkit.ts`
+- `src/lib/place-memory.ts`
+- `src/lib/image-embeddings.ts`
 - `src/lib/gemma.ts`
 - `src/lib/elevenlabs.ts`
 - `src/lib/voice-command-orchestrator.ts`
@@ -333,10 +422,11 @@ Potential native additions:
 If time is short, cut in this order:
 
 1. cut OCR
-2. cut extra voice commands
-3. cut fancy UI
-4. cut directional variants beyond `what's ahead`
-5. do not cut the core voice-triggered `ML Kit -> Gemma -> ElevenLabs` path
+2. cut multi-place memory and keep only one remembered place
+3. cut extra voice commands
+4. cut fancy UI
+5. cut directional variants beyond `what's ahead`
+6. do not cut the core voice-triggered `ML Kit -> Gemma -> ElevenLabs` path
 
 ## Minimum Winning Demo
 
@@ -350,12 +440,21 @@ The smallest convincing sponsor-track demo is:
 6. `Gemma 4` generates one short sentence
 7. `ElevenLabs` speaks it naturally
 
+Strong stretch demo:
+
+1. user says `save this place`
+2. app stores an embedding for the current scene
+3. user moves away and later says `is this familiar`
+4. app matches the current scene to the saved memory
+5. app says it looks like a previously seen place
+
 ## Immediate Next Coding Steps
 
 1. add a native voice-command contract
 2. add snapshot capture from the active AR session
 3. scaffold `describeScene.ts`
 4. add `ML Kit` wrapper
-5. add `Gemma` wrapper
-6. add `ElevenLabs` playback wrapper
-7. wire the orchestration path end to end
+5. add image embedding + place memory storage
+6. add `Gemma` wrapper
+7. add `ElevenLabs` playback wrapper
+8. wire the orchestration path end to end
