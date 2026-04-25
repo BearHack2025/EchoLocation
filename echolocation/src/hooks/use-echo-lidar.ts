@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
-import type { EchoUpdate, VoiceCommandEvent } from 'echo-lidar';
+import type {
+  EchoUpdate,
+  GemmaModelStatus,
+  ThermalStateEvent,
+  VoiceCommandEvent,
+} from 'echo-lidar';
+
+import { voiceOrchestrator } from '@/lib/voice-command-orchestrator';
 
 export type { EchoUpdate };
 
@@ -11,6 +18,13 @@ export function useEchoLidar() {
   const [running, setRunning] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modelStatus, setModelStatus] = useState<GemmaModelStatus>(() =>
+    EchoLidarModule.getModelStatus()
+  );
+  const [thermal, setThermal] = useState<ThermalStateEvent>(() => ({
+    state: (EchoLidarModule.getThermalState() as ThermalStateEvent['state']) ?? 'nominal',
+    throttled: false,
+  }));
 
   const isSupported = EchoLidarModule.isSupported();
   const supportsDepth = EchoLidarModule.supportsDepth();
@@ -20,6 +34,7 @@ export function useEchoLidar() {
     try {
       await EchoLidarModule.start(mode);
       setRunning(true);
+      voiceOrchestrator.start();
       try {
         await EchoLidarModule.startVoiceCommands();
         setListening(true);
@@ -33,10 +48,23 @@ export function useEchoLidar() {
   };
 
   const stop = async () => {
+    voiceOrchestrator.stop();
     await EchoLidarModule.stopVoiceCommands();
     setListening(false);
     await EchoLidarModule.stop();
     setRunning(false);
+  };
+
+  const downloadModel = async () => {
+    try {
+      await EchoLidarModule.downloadModel();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const cancelModelDownload = async () => {
+    await EchoLidarModule.cancelDownload();
   };
 
   useEffect(() => {
@@ -48,11 +76,35 @@ export function useEchoLidar() {
       setLatestCommand(event);
     });
 
+    const modelSub = EchoLidarEmitter.addListener('onModelStatus', (event) => {
+      setModelStatus(event);
+    });
+
+    const thermalSub = EchoLidarEmitter.addListener('onThermalState', (event) => {
+      setThermal(event);
+    });
+
     return () => {
       echoSub.remove();
       voiceSub.remove();
+      modelSub.remove();
+      thermalSub.remove();
     };
   }, []);
 
-  return { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop };
+  return {
+    latest,
+    latestCommand,
+    running,
+    listening,
+    error,
+    isSupported,
+    supportsDepth,
+    modelStatus,
+    thermal,
+    start,
+    stop,
+    downloadModel,
+    cancelModelDownload,
+  };
 }

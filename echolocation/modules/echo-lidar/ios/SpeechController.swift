@@ -14,12 +14,37 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   // Minimum seconds between any speech
   private let minInterval: TimeInterval = 1.0
 
+  /// When true, the always-on `process(update:mode:)` path becomes a no-op so
+  /// the orchestrator's voice-command speech can play without overlap.
+  /// Released on `release()` or auto-released after `reservationSafetyWindow`.
+  private(set) var isReserved: Bool = false
+  private var reservationExpiresAt: Date = .distantPast
+  private let reservationSafetyWindow: TimeInterval = 10
+
   override init() {
     super.init()
     synthesizer.delegate = self
   }
 
+  /// Voice-command path opens this gate before speaking. Stops any in-flight
+  /// always-on utterance so two voices don't overlap.
+  func reserve() {
+    isReserved = true
+    reservationExpiresAt = Date().addingTimeInterval(reservationSafetyWindow)
+    synthesizer.stopSpeaking(at: .immediate)
+  }
+
+  /// Voice-command path closes the gate. Always-on phrasing resumes immediately.
+  func release() {
+    isReserved = false
+  }
+
   func process(update: [String: Any], mode: String) {
+    // Auto-release if a `reserve()` was never paired with a `release()`.
+    if isReserved && Date() > reservationExpiresAt {
+      isReserved = false
+    }
+    guard !isReserved else { return }
     guard mode != "quiet" else { return }
 
     guard
@@ -63,6 +88,12 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     lastSpokenAt = .distantPast
     lastDirection = ""
     lastDistanceBucket = -1
+  }
+
+  /// Public entry-point so the JS orchestrator can speak Gemma sentences directly.
+  /// Bypasses throttling / repeat suppression — orchestrator owns deduping.
+  func say(_ text: String) {
+    speak(text)
   }
 
   // MARK: - Private

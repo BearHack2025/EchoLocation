@@ -3,8 +3,9 @@ import { EchoLidarPreview } from 'echo-lidar';
 import { useMemo, useRef } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { EchoDirectionHud } from '@/components/echo-direction-hud';
+import { EchoDirectionArrow } from '@/components/echo-direction-arrow';
 import { EchoNearestPill } from '@/components/echo-nearest-pill';
+import { EchoThinkingIndicator } from '@/components/echo-thinking-indicator';
 import { EchoStatusSheet } from '@/components/echo-status-sheet';
 import { useEchoLidar } from '@/hooks/use-echo-lidar';
 
@@ -22,7 +23,8 @@ export default function HomeScreen() {
       <EchoLidarPreview style={StyleSheet.absoluteFill} />
 
       <EchoNearestPill state={state} />
-      <EchoDirectionHud state={state} bottomOffset={hudBottomOffset} />
+      <EchoThinkingIndicator />
+      <EchoDirectionArrow state={state} bottomOffset={hudBottomOffset} />
 
       <BottomSheet
         ref={sheetRef}

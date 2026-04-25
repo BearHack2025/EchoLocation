@@ -31,5 +31,8 @@ Pod::Spec.new do |s|
   s.source_files = 'ios/**/*.{swift,h,m,mm}'
 
   s.dependency 'ExpoModulesCore'
+  # LiteRT-LM (Google AI Edge) — for Gemma 4 E2B on-device inference.
+  # Once you adopt the production backend, uncomment + run `pod install`.
+  # s.dependency 'TensorFlowLiteSwift/CoreML', '~> 2.17'
   install_modules_dependencies(s)
 end

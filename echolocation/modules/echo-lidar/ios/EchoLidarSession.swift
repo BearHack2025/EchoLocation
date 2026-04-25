@@ -17,7 +17,8 @@ enum EchoLidarSessionError: LocalizedError {
 
 final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
-  private let depthAnalyzer = DepthAnalyzer()
+  let labelTrigger = GemmaLabelTrigger()
+  private lazy var depthAnalyzer = DepthAnalyzer(labelTrigger: labelTrigger)
   private let speechController = SpeechController()
 
   /// Read-only access to the underlying ARSession so a render-only view

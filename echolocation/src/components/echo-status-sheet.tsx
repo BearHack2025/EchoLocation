@@ -3,13 +3,51 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Spacing } from '@/constants/theme';
 import type { useEchoLidar } from '@/hooks/use-echo-lidar';
+import { useVoiceOrchestrator } from '@/hooks/use-voice-orchestrator';
 
 type EchoState = ReturnType<typeof useEchoLidar>;
 
 const palette = Colors.light;
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 1024) return `${bytes} B`;
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}
+
+function describeModelStatus(s: EchoState['modelStatus']): string {
+  switch (s.state) {
+    case 'idle':        return 'not downloaded';
+    case 'downloading': {
+      if (s.totalBytes > 0) {
+        const pct = Math.round((s.progressBytes / s.totalBytes) * 100);
+        return `${pct}% · ${formatBytes(s.progressBytes)}/${formatBytes(s.totalBytes)}`;
+      }
+      return `downloading · ${formatBytes(s.progressBytes)}`;
+    }
+    case 'ready':       return 'ready';
+    case 'error':       return s.error ?? 'error';
+    default:            return s.state;
+  }
+}
+
 export function EchoStatusSheet({ state }: { state: EchoState }) {
-  const { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop } = state;
+  const {
+    latest,
+    latestCommand,
+    running,
+    listening,
+    error,
+    isSupported,
+    supportsDepth,
+    modelStatus,
+    start,
+    stop,
+    downloadModel,
+    cancelModelDownload,
+  } = state;
+  const voice = useVoiceOrchestrator();
 
   return (
     <BottomSheetView style={styles.container}>
@@ -42,6 +80,24 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
       <View style={styles.card}>
         <Row label="Last command" value={latestCommand?.command ?? '—'} />
         <Row label="Transcript" value={latestCommand?.transcript ?? '—'} />
+        <Row label="Voice" value={voice.status} />
+        {voice.lastSentence ? (
+          <Row label="Last reply" value={voice.lastSentence} />
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
+        <Row label="AI scene model" value={describeModelStatus(modelStatus)} />
+        {modelStatus.state === 'idle' || modelStatus.state === 'error' ? (
+          <Pressable style={[styles.btn, styles.btnSecondary]} onPress={downloadModel}>
+            <Text style={[styles.smallBold, styles.btnLabel]}>Download AI model</Text>
+          </Pressable>
+        ) : null}
+        {modelStatus.state === 'downloading' ? (
+          <Pressable style={[styles.btn, styles.btnSecondary]} onPress={cancelModelDownload}>
+            <Text style={[styles.smallBold, styles.btnLabel]}>Cancel download</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {error ? <Text style={[styles.small, styles.center, styles.error]}>{error}</Text> : null}
@@ -106,6 +162,7 @@ const styles = StyleSheet.create({
   },
   btnStart: { backgroundColor: '#3c87f7' },
   btnStop: { backgroundColor: '#ff453a' },
+  btnSecondary: { backgroundColor: '#5856D6' },
   btnDisabled: { opacity: 0.4 },
   btnLabel: { color: '#ffffff' },
   error: { color: '#ff453a' },

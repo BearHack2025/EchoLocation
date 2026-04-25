@@ -28,7 +28,7 @@ export type EchoSupportStatus = {
   supportsMeshClassification: boolean;
 };
 
-export type VoiceCommandName = 'ahead' | 'left' | 'right' | 'repeat';
+export type VoiceCommandName = 'ahead' | 'left' | 'right' | 'repeat' | 'where';
 
 export type VoiceCommandEvent = {
   command: VoiceCommandName;
@@ -37,7 +37,16 @@ export type VoiceCommandEvent = {
   source: 'speech';
 };
 
+export type ThermalStateName = 'nominal' | 'fair' | 'serious' | 'critical' | 'unknown';
+
+export type ThermalStateEvent = {
+  state: ThermalStateName;
+  throttled: boolean;
+};
+
 export type EchoLidarModuleEvents = {
   onEchoUpdate: (event: EchoUpdate) => void;
   onVoiceCommand: (event: VoiceCommandEvent) => void;
+  onModelStatus: (event: import('./Gemma.types').GemmaModelStatus) => void;
+  onThermalState: (event: ThermalStateEvent) => void;
 };
