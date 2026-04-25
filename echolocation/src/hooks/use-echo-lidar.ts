@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
 import type { EchoUpdate, VoiceCommandEvent } from 'echo-lidar';
+import { speakWithFallback, type SpeechMode } from '@/services/audio-service';
 
 export type { EchoUpdate };
 
@@ -14,6 +15,29 @@ export function useEchoLidar() {
 
   const isSupported = EchoLidarModule.isSupported();
   const supportsDepth = EchoLidarModule.supportsDepth();
+
+  const handleSpeechRequest = useCallback(async (event: { text: string; mode: string }) => {
+    const { text, mode } = event;
+
+    try {
+      const audioUrl = await speakWithFallback(text, mode as SpeechMode);
+
+      if (audioUrl === 'fallback') {
+        EchoLidarModule.onSpeechFailed('Builtin TTS fallback');
+        return;
+      }
+
+      await EchoLidarModule.onSpeechReady(audioUrl, (success, err) => {
+        if (!success) {
+          console.warn('[Audio] Audio playback failed:', err);
+          EchoLidarModule.onSpeechFailed(err ?? 'Playback failed');
+        }
+      });
+    } catch (e) {
+      console.warn('[Audio] TTS failed, using builtin TTS:', e);
+      EchoLidarModule.onSpeechFailed(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe') => {
     setError(null);
@@ -48,11 +72,14 @@ export function useEchoLidar() {
       setLatestCommand(event);
     });
 
+    const speechSub = EchoLidarEmitter.addListener('onSpeechRequest', handleSpeechRequest);
+
     return () => {
       echoSub.remove();
       voiceSub.remove();
+      speechSub.remove();
     };
-  }, []);
+  }, [handleSpeechRequest]);
 
   return { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop };
 }

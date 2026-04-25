@@ -18,10 +18,8 @@ enum EchoLidarSessionError: LocalizedError {
 final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   private let depthAnalyzer = DepthAnalyzer()
-  private let speechController = SpeechController()
+  private var speechController: SpeechController?
 
-  /// Read-only access to the underlying ARSession so a render-only view
-  /// (e.g. ARSCNView) can attach without taking ownership of run/pause.
   var sharedARSession: ARSession { arSession }
 
   private var sendEvent: ((String, [String: Any]) -> Void)?
@@ -32,6 +30,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   func start(mode: String, sendEvent: @escaping (String, [String: Any]) -> Void) throws {
     self.mode = mode
     self.sendEvent = sendEvent
+    self.speechController = SpeechController()
 
     guard ARWorldTrackingConfiguration.isSupported else {
       throw EchoLidarSessionError.unsupportedARKit
@@ -61,7 +60,8 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     mockTimer?.invalidate()
     mockTimer = nil
     arSession.pause()
-    speechController.stop()
+    speechController?.stop()
+    speechController = nil
   }
 
   func disableMockMode() {
@@ -73,7 +73,13 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       return
     }
 
-    speechController.process(update: update, mode: mode)
+    speechController?.process(update: update, mode: mode) { [weak self] text, speechMode in
+      self?.sendEvent?("onSpeechRequest", [
+        "text": text,
+        "mode": speechMode,
+        "timestamp": Date().timeIntervalSince1970
+      ])
+    }
     sendEvent?("onEchoUpdate", update)
   }
 

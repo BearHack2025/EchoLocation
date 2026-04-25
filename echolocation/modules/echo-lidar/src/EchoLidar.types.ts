@@ -40,4 +40,11 @@ export type VoiceCommandEvent = {
 export type EchoLidarModuleEvents = {
   onEchoUpdate: (event: EchoUpdate) => void;
   onVoiceCommand: (event: VoiceCommandEvent) => void;
+  onSpeechRequest: (event: SpeechRequestEvent) => void;
+};
+
+export type SpeechRequestEvent = {
+  text: string;
+  mode: EchoMode;
+  timestamp: number;
 };

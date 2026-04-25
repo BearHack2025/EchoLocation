@@ -1,15 +1,15 @@
 import ARKit
+import AVFoundation
 import ExpoModulesCore
 
 public final class EchoLidarModule: Module {
-  /// Weak reference so the preview view can find the live module instance
-  /// to attach its ARSCNView to the same ARSession that drives EchoUpdate events.
   public static weak var current: EchoLidarModule?
 
   private let sessionController = EchoLidarSession()
   private let voiceCommandController = VoiceCommandController()
+  private var speechCompletionHandler: ((Bool, String?) -> Void)?
+  private var audioPlayer: AVAudioPlayer?
 
-  /// Exposed so EchoLidarPreviewView can attach to sharedARSession.
   var session: EchoLidarSession { sessionController }
 
   public func definition() -> ModuleDefinition {
@@ -19,7 +19,7 @@ public final class EchoLidarModule: Module {
       EchoLidarModule.current = self
     }
 
-    Events("onEchoUpdate", "onVoiceCommand")
+    Events("onEchoUpdate", "onVoiceCommand", "onSpeechRequest")
 
     View(EchoLidarPreviewView.self) {
       Prop("showHeatmap") { (view: EchoLidarPreviewView, value: Bool?) in
@@ -77,6 +77,29 @@ public final class EchoLidarModule: Module {
     AsyncFunction("stopVoiceCommands") { [weak self] in
       await MainActor.run {
         self?.voiceCommandController.stopListening()
+      }
+    }
+
+    AsyncFunction("onSpeechReady") { [weak self] (audioUrl: String, completion: @escaping (Bool, String?) -> Void) in
+      guard let self else {
+        completion(false, "Module not available")
+        return
+      }
+
+      self.speechCompletionHandler = completion
+      self.sessionController.speechController?.onAudioReady(audioUrl: audioUrl) { success, error in
+        completion(success, error)
+      }
+    }
+
+    AsyncFunction("onSpeechFailed") { [weak self] (error: String?) in
+      guard let self else {
+        return
+      }
+
+      if let handler = self.speechCompletionHandler {
+        handler(false, error ?? "Unknown error")
+        self.speechCompletionHandler = nil
       }
     }
   }

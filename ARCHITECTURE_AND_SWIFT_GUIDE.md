@@ -492,78 +492,101 @@ The standard to keep applying is:
 
 ## ElevenLabs Integration
 
-This project uses ElevenLabs for premium voice output (TTS) and voice input transcription (STT).
+This project uses ElevenLabs for premium voice output (TTS) with different voices for Echo and Describe modes, plus fallback to builtin iOS TTS when unavailable.
 
 ### Architecture
 
 ```
-React Native App
-  -> useElevenLabs hook
-  -> elevenlabsTts.ts (text-to-speech)
-  -> elevenlabsStt.ts (speech-to-text)
-  -> expo-av (audio playback/recording)
-  -> ElevenLabs Cloud API
+┌─────────────────────────────────────────────────────────────────┐
+│                    EchoLidarSession (Swift)                     │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              SpeechController (Coordinator)                  ││
+│  │  • Throttles/debounces speech                                 ││
+│  │  • Formats text into phrases                                 ││
+│  │  • Routes speech to JS layer                                 ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                              ↓ onSpeechRequest event             │
+│                    JS Layer (Expo)                              │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              audio-service.ts (Voice Router)                 ││
+│  │  • speakWithFallback(text, mode)                              ││
+│  │  • Voice config by mode (echo vs describe)                    ││
+│  │  • Timeout handling (5s)                                     ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                              ↓                                   │
+│  ┌──────────────────────────────┐  ┌──────────────────────────┐│
+│  │  ElevenLabs TTS (Primary)   │  │  Builtin iOS TTS         ││
+│  │  Echo: Rachel voice         │  │  (Fallback)              ││
+│  │  Describe: Arnold voice    │  │                          ││
+│  └──────────────────────────────┘  └──────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+### Voice Configuration
+
+| Mode | Voice ID | Voice Name | Purpose |
+|------|----------|------------|---------|
+| **Echo** | `21m00Tcm4TlvDq8ikWAM` | Rachel | Quick, clear status updates |
+| **Describe** | `EXw4nqY7xTfnS2A7P8xL` | Arnold | Rich, detailed descriptions |
 
 ### Implementation Files
 
 | File | Purpose |
 |------|---------|
-| `src/services/elevenlabsTts.ts` | TTS worker - generates audio from text |
-| `src/services/elevenlabsStt.ts` | STT worker - transcribes audio to text |
-| `src/hooks/useElevenLabs.ts` | React hook for speech and transcription |
-| `app.json` (extra.elevenlabsApiKey) | API key storage |
+| `src/services/audio-logger.ts` | Structured logging to console |
+| `src/services/audio-service.ts` | Voice router with fallback logic |
+| `src/services/elevenlabsTts.ts` | ElevenLabs TTS API integration |
+| `src/services/elevenlabsStt.ts` | ElevenLabs STT API integration |
+| `src/hooks/use-echo-lidar.ts` | Speech request handler via event listener |
+| `modules/echo-lidar/ios/SpeechController.swift` | Swift speech coordinator with JS bridge |
+| `modules/echo-lidar/ios/EchoLidarModule.swift` | Native module with onSpeechReady/Failed |
+| `modules/echo-lidar/src/EchoLidarModule.ts` | JS native module wrapper |
 
 ### API Key Configuration
 
-Set the ElevenLabs API key in `app.json`:
-
-```json
-{
-  "expo": {
-    "extra": {
-      "elevenlabsApiKey": "your_api_key_here"
-    }
-  }
-}
-```
-
-Or use environment variables:
+**Environment variable (recommended - not committed to repo):**
 
 ```
 EXPO_PUBLIC_ELEVENLABS_API_KEY=your_api_key_here
 ```
 
+The API key is stored in `.env` file and NOT in `app.json` (to prevent accidental commits).
+
+### Logging
+
+All audio requests are logged to the console with structured format:
+
+```
+[Audio] source=elevenlabs-tts level=info status=success text="right, very close" latency=450ms mode=echo ts=2026-04-25T...
+[Audio] source=builtin-ios level=warn status=success text="right, very close" error="ElevenLabs unavailable: timeout" mode=echo ts=2026-04-25T...
+```
+
+Log sources: `elevenlabs-tts`, `elevenlabs-stt`, `expo-speech`, `builtin-ios`
+
 ### Usage
 
 ```typescript
-import { useElevenLabs } from './hooks/useElevenLabs';
+import { speakWithFallback } from '@/services/audio-service';
 
-function MyComponent() {
-  const { speakText, transcribeAudio, isConfigured } = useElevenLabs();
-
-  // Text-to-Speech
-  const handleSpeak = async () => {
-    await speakText('Object detected: chair, two meters ahead');
-  };
-
-  // Speech-to-Text
-  const handleTranscribe = async (audioBlob: Blob) => {
-    const text = await transcribeAudio(audioBlob);
-    console.log('Transcribed:', text);
-  };
-}
+// Text-to-Speech with fallback
+const audioUrl = await speakWithFallback('Object detected: chair, 2 meters ahead', 'describe');
 ```
 
-### Swift Layer Integration
+### Swift-JS Bridge
 
-The native Swift layer (`SpeechController.swift`) uses `AVSpeechSynthesizer` for immediate feedback. ElevenLabs supplements this for the richer "describe scene" flow:
+Speech requests flow through events:
 
-1. Fast feedback: AVSpeechSynthesizer (native Swift)
-2. Rich descriptions: ElevenLabs TTS (JavaScript)
+1. **Swift → JS**: `onSpeechRequest` event with `{ text, mode }`
+2. **JS → Swift**: `onSpeechReady(audioUrl)` or `onSpeechFailed(error)`
+
+Fallback triggers builtin iOS `AVSpeechSynthesizer` when:
+- ElevenLabs API is not configured
+- Network timeout (>5 seconds)
+- API returns error
+- No internet connection
 
 ### What To Avoid
 
-- Do not use ElevenLabs in the real-time obstacle warning loop (latency)
 - Do not stream audio continuously (cost)
-- Do not rely on ElevenLabs when offline
+- Do not use ElevenLabs for real-time obstacle warnings without fallback (latency/connectivity)
+- Do not commit API keys to version control

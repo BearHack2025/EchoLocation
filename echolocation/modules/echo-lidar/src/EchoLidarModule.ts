@@ -11,6 +11,8 @@ type NativeEchoLidarModule = {
   stop(): Promise<void>;
   startVoiceCommands(): Promise<void>;
   stopVoiceCommands(): Promise<void>;
+  onSpeechReady(audioUrl: string, completion: (success: boolean, error?: string) => void): Promise<void>;
+  onSpeechFailed(error?: string): Promise<void>;
 };
 
 // requireNativeModule throws in Expo Go / simulator without a dev build.
@@ -28,6 +30,8 @@ try {
     stop: async () => {},
     startVoiceCommands: async () => { throw new Error('Voice commands require a development build on iOS'); },
     stopVoiceCommands: async () => {},
+    onSpeechReady: async () => {},
+    onSpeechFailed: async () => {},
   };
 }
 

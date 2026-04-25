@@ -3,15 +3,15 @@ import Foundation
 
 final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
   private let synthesizer = AVSpeechSynthesizer()
+  private var audioPlayer: AVAudioPlayer?
+  private var pendingCompletion: ((Bool, String?) -> Void)?
 
   private var lastPhrase = ""
   private var lastSpokenAt: Date = .distantPast
   private var lastDirection = ""
   private var lastDistanceBucket = -1
 
-  // Minimum seconds between identical phrases
   private let repeatInterval: TimeInterval = 3.0
-  // Minimum seconds between any speech
   private let minInterval: TimeInterval = 1.0
 
   override init() {
@@ -19,7 +19,7 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     synthesizer.delegate = self
   }
 
-  func process(update: [String: Any], mode: String) {
+  func process(update: [String: Any], mode: String, onSpeechRequest: @escaping (String, String) -> Void) {
     guard mode != "quiet" else { return }
 
     guard
@@ -29,16 +29,15 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     else { return }
 
     if mode == "echo" {
-      // Echo mode: short directional cues only on significant change
       let bucket = distanceBucket(distance)
       guard direction != lastDirection || bucket != lastDistanceBucket else { return }
       lastDirection = direction
       lastDistanceBucket = bucket
-      speak(shortPhrase(direction: direction, distance: distance))
+      let phrase = shortPhrase(direction: direction, distance: distance)
+      requestSpeech(text: phrase, mode: mode, onSpeechRequest: onSpeechRequest)
       return
     }
 
-    // Describe mode: full phrases, throttled
     let phrase = describePhrase(direction: direction, distance: distance, label: label)
     let now = Date()
     let sinceLast = now.timeIntervalSince(lastSpokenAt)
@@ -54,28 +53,37 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
 
     lastDirection = direction
     lastDistanceBucket = distanceBucket(distance)
-    speak(phrase)
+    requestSpeech(text: phrase, mode: mode, onSpeechRequest: onSpeechRequest)
   }
 
   func stop() {
     synthesizer.stopSpeaking(at: .immediate)
+    audioPlayer?.stop()
+    audioPlayer = nil
     lastPhrase = ""
     lastSpokenAt = .distantPast
     lastDirection = ""
     lastDistanceBucket = -1
+    pendingCompletion = nil
   }
 
-  // MARK: - Private
+  func onAudioReady(audioUrl: String, completion: @escaping (Bool, String?) -> Void) {
+    pendingCompletion = completion
 
-  private func speak(_ phrase: String) {
-    synthesizer.stopSpeaking(at: .word)
-    let utterance = AVSpeechUtterance(string: phrase)
-    utterance.rate = 0.52
-    utterance.pitchMultiplier = 1.0
-    utterance.volume = 1.0
-    synthesizer.speak(utterance)
-    lastPhrase = phrase
-    lastSpokenAt = Date()
+    guard let url = URL(string: audioUrl) else {
+      completion(false, "Invalid audio URL")
+      return
+    }
+
+    do {
+      let player = try AVAudioPlayer(contentsOf: url)
+      player.delegate = self
+      audioPlayer = player
+      player.play()
+      lastSpokenAt = Date()
+    } catch {
+      completion(false, error.localizedDescription)
+    }
   }
 
   private func shortPhrase(direction: String, distance: Double) -> String {
@@ -100,7 +108,6 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     }
   }
 
-  // Groups distance into coarse buckets to avoid speaking on every tiny change
   private func distanceBucket(_ meters: Double) -> Int {
     switch meters {
     case ..<0.5: return 0
@@ -109,5 +116,24 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     case ..<2.5: return 3
     default: return 4
     }
+  }
+}
+
+extension SpeechController: AVAudioPlayerDelegate {
+  func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    pendingCompletion?(flag, flag ? nil : "Playback failed")
+    pendingCompletion = nil
+    audioPlayer = nil
+  }
+
+  func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+    pendingCompletion?(false, error?.localizedDescription ?? "Decode error")
+    pendingCompletion = nil
+    audioPlayer = nil
+  }
+}
+
+extension SpeechController: AVSpeechSynthesizerDelegate {
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
   }
 }

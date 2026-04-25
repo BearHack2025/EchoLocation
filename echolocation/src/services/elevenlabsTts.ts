@@ -1,3 +1,5 @@
+import { logAudioError, logAudioRequest, logAudioSuccess } from './audio-logger';
+
 const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1';
 
 export class ElevenLabsError extends Error {
@@ -50,6 +52,9 @@ export const speak = async (
     return { audioUrl: cachedUrl, audioBlob: new Blob([], { type: 'audio/mp3' }) };
   }
 
+  const startTime = Date.now();
+  logAudioRequest('elevenlabs-tts', text);
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -78,6 +83,7 @@ export const speak = async (
 
     if (!response.ok) {
       const error = await response.text();
+      logAudioError('elevenlabs-tts', `HTTP ${response.status}: ${error}`, text);
       throw new ElevenLabsError(`API error: ${error}`, response.status);
     }
 
@@ -94,6 +100,9 @@ export const speak = async (
     }
     cachedAudio.set(cacheKey, audioUrl);
 
+    const latency = Date.now() - startTime;
+    logAudioSuccess('elevenlabs-tts', text, latency);
+
     return { audioBlob, audioUrl };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -101,6 +110,7 @@ export const speak = async (
       throw error;
     }
     const message = error instanceof Error ? error.message : 'Unknown error';
+    logAudioError('elevenlabs-tts', message, text);
     throw new ElevenLabsError(`Request failed: ${message}`);
   }
 };
