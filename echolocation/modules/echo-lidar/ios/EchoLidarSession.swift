@@ -20,6 +20,10 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let depthAnalyzer = DepthAnalyzer()
   private let speechController = SpeechController()
 
+  /// Read-only access to the underlying ARSession so a render-only view
+  /// (e.g. ARSCNView) can attach without taking ownership of run/pause.
+  var sharedARSession: ARSession { arSession }
+
   private var sendEvent: ((String, [String: Any]) -> Void)?
   private var mode = "describe"
   private var mockTimer: Timer?

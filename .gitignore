@@ -44,3 +44,10 @@ echolocation/android/
 echolocation/Pods/
 echolocation/.symlinks/
 
+.claude
+.history
+.opencode
+CLAUDE.md
+AGENTS.md
+.repomixignore
+plans/
