@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { Audio } from 'expo-av';
+import { useCallback, useState, useRef, useEffect } from 'react';
+import { createAudioPlayer, AudioPlayer } from 'expo-audio';
 
 import {
   speak,
@@ -28,7 +28,8 @@ export function useElevenLabs() {
   const [lastSpokenText, setLastSpokenText] = useState('');
   const [lastTranscribedText, setLastTranscribedText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [audioInstance, setAudioInstance] = useState<Audio.Sound | null>(null);
+
+  const playerRef = useRef<AudioPlayer | null>(null);
 
   const isConfigured = isTtsConfigured() && isSttConfigured();
 
@@ -43,26 +44,27 @@ export function useElevenLabs() {
       setLastSpokenText(text);
 
       try {
-        if (audioInstance) {
-          await audioInstance.unloadAsync();
+        if (playerRef.current) {
+          playerRef.current.remove();
+          playerRef.current = null;
         }
 
         const result = await speak(text, config);
-        if(result.audioUrl === undefined) {
+        if (result.audioUrl === undefined) {
           setError('No audio URL returned from ElevenLabs');
           return false;
         }
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: result.audioUrl },
-          { shouldPlay: true },
-          (status) => {
-            if (status.isLoaded && status.didJustFinish) {
-              setIsPlaying(false);
-            }
-          }
-        );
 
-        setAudioInstance(sound);
+        const player = createAudioPlayer(result.audioUrl);
+        playerRef.current = player;
+
+        player.addListener('playbackStatusUpdate', (status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            setIsPlaying(false);
+          }
+        });
+
+        player.play();
         setIsPlaying(true);
         return true;
       } catch (e) {
@@ -76,17 +78,17 @@ export function useElevenLabs() {
         return false;
       }
     },
-    [audioInstance]
+    []
   );
 
   const stopSpeaking = useCallback(async () => {
-    if (audioInstance) {
-      await audioInstance.stopAsync();
-      await audioInstance.unloadAsync();
-      setAudioInstance(null);
+    if (playerRef.current) {
+      playerRef.current.pause();
+      playerRef.current.remove();
+      playerRef.current = null;
     }
     setIsPlaying(false);
-  }, [audioInstance]);
+  }, []);
 
   const transcribeAudio = useCallback(
     async (
@@ -123,6 +125,14 @@ export function useElevenLabs() {
 
   const clearElevenLabsCache = useCallback(() => {
     clearCache();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.remove();
+      }
+    };
   }, []);
 
   return {
