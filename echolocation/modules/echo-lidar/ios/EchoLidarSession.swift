@@ -18,7 +18,7 @@ enum EchoLidarSessionError: LocalizedError {
 final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   private let depthAnalyzer = DepthAnalyzer()
-  private var speechController: SpeechController?
+  var speechController: SpeechController?
 
   var sharedARSession: ARSession { arSession }
 

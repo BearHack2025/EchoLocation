@@ -80,15 +80,13 @@ public final class EchoLidarModule: Module {
       }
     }
 
-    AsyncFunction("onSpeechReady") { [weak self] (audioUrl: String, completion: @escaping (Bool, String?) -> Void) in
+    AsyncFunction("onSpeechReady") { [weak self] (audioUrl: String) -> Void in
       guard let self else {
-        completion(false, "Module not available")
         return
       }
 
-      self.speechCompletionHandler = completion
       self.sessionController.speechController?.onAudioReady(audioUrl: audioUrl) { success, error in
-        completion(success, error)
+        self.speechCompletionHandler?(success, error)
       }
     }
 
