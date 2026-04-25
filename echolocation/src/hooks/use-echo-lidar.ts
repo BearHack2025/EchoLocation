@@ -8,15 +8,22 @@ import type {
   VoiceCommandEvent,
 } from 'echo-lidar';
 
-import { voiceOrchestrator } from '@/lib/voice-command-orchestrator';
+import { elevenLabsPlayer } from '@/services/elevenlabs-player';
 
 export type { EchoUpdate };
 
+/// Manual Start/Stop control for the LiDAR session.
+/// - `start()` runs the AR session AND unmutes the danger-speech path so the
+///   event-driven Gemma detector can dispatch warnings via ElevenLabs.
+/// - `stop()` cancels in-flight TTS, mutes the speech path, and pauses the
+///   AR session — the app goes fully silent.
+///
+/// Speech itself is handled by `danger-speech-bridge.ts` which subscribes to
+/// `onDangerSpeech` events and plays via ElevenLabs only.
 export function useEchoLidar() {
   const [latest, setLatest] = useState<EchoUpdate | null>(null);
   const [latestCommand, setLatestCommand] = useState<VoiceCommandEvent | null>(null);
   const [running, setRunning] = useState(false);
-  const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelStatus, setModelStatus] = useState<GemmaModelStatus>(() =>
     EchoLidarModule.getModelStatus()
@@ -31,26 +38,30 @@ export function useEchoLidar() {
 
   const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe') => {
     setError(null);
+    // Defensive: cancel any leftover playback from a prior session.
+    elevenLabsPlayer.stop();
     try {
       await EchoLidarModule.start(mode);
-      setRunning(true);
-      voiceOrchestrator.start();
+      // Unmute so the event-driven danger detector can dispatch summaries
+      // (which the danger-speech bridge plays via ElevenLabs).
       try {
-        await EchoLidarModule.startVoiceCommands();
-        setListening(true);
-      } catch (voiceError: unknown) {
-        setListening(false);
-        setError(voiceError instanceof Error ? voiceError.message : String(voiceError));
-      }
+        (EchoLidarModule as unknown as { setVoiceModeMuted?: (m: boolean) => void })
+          .setVoiceModeMuted?.(false);
+      } catch {}
+      setRunning(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
   const stop = async () => {
-    voiceOrchestrator.stop();
-    await EchoLidarModule.stopVoiceCommands();
-    setListening(false);
+    // Order: cancel TTS first → mute the speech path → pause LiDAR.
+    // This keeps an in-flight summary from sneaking through after stop().
+    elevenLabsPlayer.stop();
+    try {
+      (EchoLidarModule as unknown as { setVoiceModeMuted?: (m: boolean) => void })
+        .setVoiceModeMuted?.(true);
+    } catch {}
     await EchoLidarModule.stop();
     setRunning(false);
   };
@@ -96,7 +107,6 @@ export function useEchoLidar() {
     latest,
     latestCommand,
     running,
-    listening,
     error,
     isSupported,
     supportsDepth,

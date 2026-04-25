@@ -26,6 +26,29 @@ type NativeEchoLidarModule = {
   beginVoiceSpeech(): Promise<void>;
   endVoiceSpeech(): Promise<void>;
 
+  // Wake-word listener (Phase 2)
+  startWakeListener(): Promise<void>;
+  stopWakeListener(): Promise<void>;
+
+  // Query audio recording (Phase 3)
+  recordQueryAudio(maxSeconds?: number): Promise<string>;
+  stopQueryAudio(): Promise<void>;
+
+  // Gemma vision Q&A (Phase 4)
+  quickQuery(
+    question: string,
+    distanceM: number,
+    direction: string,
+    label: string
+  ): Promise<string>;
+
+  // Wake-only briefing (260425-1629-wake-only-briefing P2)
+  wakeBriefing(
+    distanceM: number,
+    direction: string,
+    label: string
+  ): Promise<string>;
+
   // Gemma provisioning
   getModelStatus(): GemmaModelStatus;
   downloadModel(): Promise<void>;
@@ -48,6 +71,10 @@ type NativeEchoLidarModule = {
   // Event-driven summarized speech toggle (vs template loop)
   setEventDrivenSpeech(enabled: boolean): void;
   getEventDrivenSpeech(): boolean;
+
+  // Voice-mode mute (silences all describe-mode speech for the wake-word path)
+  setVoiceModeMuted(muted: boolean): void;
+  getVoiceModeMuted(): boolean;
 
   // Thermal state
   getThermalState(): string;
@@ -74,6 +101,14 @@ const noopStub: NativeEchoLidarModule = {
   stopSpeaking: async () => {},
   beginVoiceSpeech: async () => {},
   endVoiceSpeech: async () => {},
+  startWakeListener: async () => {
+    throw new Error('Wake-word listener requires a development build on iOS');
+  },
+  stopWakeListener: async () => {},
+  recordQueryAudio: async () => '',
+  stopQueryAudio: async () => {},
+  quickQuery: async () => '',
+  wakeBriefing: async () => '',
   getModelStatus: () => ({ state: 'idle', progressBytes: 0, totalBytes: 0 }),
   downloadModel: async () => {
     throw new Error('Model download requires a development build on iOS');
@@ -93,6 +128,8 @@ const noopStub: NativeEchoLidarModule = {
   getLabelSource: () => 'init',
   setEventDrivenSpeech: () => {},
   getEventDrivenSpeech: () => true,
+  setVoiceModeMuted: () => {},
+  getVoiceModeMuted: () => false,
   getThermalState: () => 'nominal',
 };
 

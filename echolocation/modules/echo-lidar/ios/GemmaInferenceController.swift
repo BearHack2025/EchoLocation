@@ -46,8 +46,13 @@ public final class GemmaInferenceController {
   private(set) var downloadProgressBytes: Int64 = 0
   private(set) var downloadTotalBytes: Int64 = 0
 
-  // Flip to false once LiteRT-LM SDK call is verified on device.
-  var useMockBackend: Bool = true
+  // OPTION B (per user request): set to `false` so every Gemma call routes
+  // to the un-wired LiteRT backend → throws → EchoLidarSession falls through
+  // to `describeFallback`, which uses the ACTUAL sensor snapshot and appends
+  // the correct `step right` / `step left` / `slow down` / `stop now` advice
+  // from `SpeechController.avoidanceAdvice`. Mock summaries become unreachable
+  // until you wire the real LiteRT-LM SDK and flip this back.
+  var useMockBackend: Bool = false
 
   // Hard cap per LiteRT iOS issue #6765 — > 4096 SIGSEGVs on iPhone 16 Pro Max.
   let maxTokens: Int = 4096
@@ -191,6 +196,99 @@ public final class GemmaInferenceController {
 
   static let QUICK_LABEL_PROMPT = "What is the dominant object in front of the camera? Reply with one word, lowercase."
 
+  static let QUICK_QUERY_PROMPT_TEMPLATE = """
+  You are answering a blind user's question about their surroundings.
+
+  Their question: %@
+
+  Sensor context:
+  - Nearest obstacle distance: %.1f meters
+  - Direction: %@
+  - Mesh label: %@
+
+  The current camera image is attached.
+
+  Reply with EXACTLY one short sentence (under 18 words):
+  - directly answer their question using what's visible + sensor context
+  - if they asked about safety/direction, end with "step left", "step right", "slow down", "stop now", or "go ahead"
+  - if their question is unrelated to the scene, say "I can only see what's in front of you."
+
+  No greetings, no preamble.
+  """
+
+  /// Answer a transcribed user question using image + LiDAR context.
+  /// Returns one short sentence; throws on empty output.
+  func quickQuery(
+    question: String,
+    distanceM: Double,
+    direction: String,
+    label: String,
+    image: UIImage
+  ) async throws -> String {
+    let prompt = String(
+      format: GemmaInferenceController.QUICK_QUERY_PROMPT_TEMPLATE,
+      question, distanceM, direction, label
+    )
+    let raw = try await runInference(prompt: prompt, image: image)
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      throw InferenceError.backendFailed("empty query response")
+    }
+    return trimmed
+  }
+
+  static let WAKE_BRIEFING_PROMPT_TEMPLATE = """
+  You are briefing a blind user who just asked for guidance. They cannot see.
+
+  Sensor context:
+  - Nearest obstacle distance: %.1f meters
+  - Direction: %@
+  - Mesh label: %@
+
+  The current camera image is attached.
+
+  Reply with AT MOST 2 short sentences (≤25 words total):
+  - describe what is in front of them, where, and how far
+  - end with one action verb: "step left", "step right", "slow down", "stop now", or "go ahead"
+
+  No greetings, no preamble, no questions back to the user.
+  """
+
+  /// One short sentence (or two) describing the user's surroundings + recommended
+  /// next move. Triggered by the "hey echo" wake word; the user does not supply
+  /// a question. Output is hard-capped at 2 sentences.
+  func wakeBriefing(
+    image: UIImage,
+    distanceM: Double,
+    direction: String,
+    label: String
+  ) async throws -> String {
+    let prompt = String(
+      format: GemmaInferenceController.WAKE_BRIEFING_PROMPT_TEMPLATE,
+      distanceM, direction, label
+    )
+    let raw = try await runInference(prompt: prompt, image: image)
+    let trimmed = Self.trimTwoSentences(raw)
+    guard !trimmed.isEmpty else {
+      throw InferenceError.backendFailed("empty briefing")
+    }
+    return trimmed
+  }
+
+  /// Hard cap: keep at most the first 2 sentences. Splits on `. ` (with trailing
+  /// space). Appends a period if the last sentence is missing terminal punctuation.
+  private static func trimTwoSentences(_ text: String) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return "" }
+    var pieces = trimmed.components(separatedBy: ". ")
+    if pieces.count > 2 { pieces = Array(pieces.prefix(2)) }
+    var result = pieces.joined(separator: ". ")
+    if !result.hasSuffix(".") && !result.hasSuffix("!") && !result.hasSuffix("?") {
+      result += "."
+    }
+    return result
+  }
+
   static let DANGER_SUMMARY_PROMPT_TEMPLATE = """
   You are warning a blind user about an obstacle they just got close to.
 
@@ -292,6 +390,21 @@ final class MockInferenceBackend: InferenceBackend {
     "Table edge to your left, 0.6 meters, step right.",
     "Backpack on the floor ahead, 0.5 meters, stop now."
   ]
+  private let queryAnswers = [
+    "There is a chair to your right and a doorway ahead, go ahead.",
+    "A wall is 0.7 meters in front, step left to avoid it, slow down.",
+    "I see a desk with a laptop on it, the path to your left is clear.",
+    "Open hallway ahead, no obstacles within 3 meters, go ahead.",
+    "Backpack on the floor 0.5 meters ahead, stop now.",
+    "I can only see what's in front of you."
+  ]
+  private let briefingAnswers = [
+    "There is a chair to your right and a doorway 2 meters ahead. Go ahead.",
+    "A wall is about 0.7 meters in front. Step left to avoid it.",
+    "Open hallway with no obstacles within 3 meters. Go ahead.",
+    "Backpack on the floor 0.5 meters ahead. Stop now.",
+    "Table edge to your left, 0.6 meters away. Step right."
+  ]
 
   func generate(prompt: String, image: UIImage, maxTokens: Int) async throws -> String {
     // Quick label — short, single word, fast (matches a real <600ms vision call).
@@ -308,6 +421,22 @@ final class MockInferenceBackend: InferenceBackend {
       let idx = rotation % summaryAnswers.count
       rotation += 1
       return summaryAnswers[idx]
+    }
+
+    // Vision Q&A — slightly longer answers, ~1 s typical.
+    if prompt.contains("answering a blind user's question") {
+      try await Task.sleep(nanoseconds: UInt64.random(in: 600_000_000...1_400_000_000))
+      let idx = rotation % queryAnswers.count
+      rotation += 1
+      return queryAnswers[idx]
+    }
+
+    // Wake briefing — 1–2 sentence guidance, ~700 ms typical.
+    if prompt.contains("briefing a blind user") {
+      try await Task.sleep(nanoseconds: UInt64.random(in: 500_000_000...1_200_000_000))
+      let idx = rotation % briefingAnswers.count
+      rotation += 1
+      return briefingAnswers[idx]
     }
 
     // Other (scene / direction) — realistic 1.5–2.5s on hackathon target hardware.

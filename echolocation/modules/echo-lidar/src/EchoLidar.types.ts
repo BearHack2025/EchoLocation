@@ -44,9 +44,22 @@ export type ThermalStateEvent = {
   throttled: boolean;
 };
 
+export type WakeWordEvent = {
+  phrase: string;        // "hey echo" | "echo"
+  timestampMs: number;
+};
+
+export type DangerSpeechEvent = {
+  sentence: string;
+  source: 'gemma' | 'lidar-fallback';
+  latencyMs: number;
+};
+
 export type EchoLidarModuleEvents = {
   onEchoUpdate: (event: EchoUpdate) => void;
   onVoiceCommand: (event: VoiceCommandEvent) => void;
   onModelStatus: (event: import('./Gemma.types').GemmaModelStatus) => void;
   onThermalState: (event: ThermalStateEvent) => void;
+  onWakeWord: (event: WakeWordEvent) => void;
+  onDangerSpeech: (event: DangerSpeechEvent) => void;
 };

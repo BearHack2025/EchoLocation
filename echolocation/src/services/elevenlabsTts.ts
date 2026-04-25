@@ -1,4 +1,4 @@
-const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1';
+import { ELEVENLABS, elevenLabsApiKey } from './elevenlabs-config';
 
 export class ElevenLabsError extends Error {
   constructor(message: string, public statusCode?: number) {
@@ -18,20 +18,41 @@ export interface ElevenLabsTTSResponse {
   audioUrl?: string;
 }
 
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
-const DEFAULT_MODEL_ID = 'elevenMono_v1';
-
 const cachedAudio: Map<string, string> = new Map();
 const MAX_CACHE_SIZE = 20;
 
-export const getApiKey = (): string => {
-  return process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
-};
+export const getApiKey = (): string => elevenLabsApiKey();
 
 export const isConfigured = (): boolean => {
   const key = getApiKey();
   return !!key && key.length > 0;
 };
+
+/**
+ * Convert a `Response`'s body to a `data:audio/mpeg;base64,...` URI.
+ *
+ * Why: React Native does not implement `URL.createObjectURL`, so the previous
+ * `blob → URL.createObjectURL` path silently threw at runtime — the orchestrator
+ * then fell through to native AVSpeechSynthesizer every time. Data URIs are
+ * universally accepted by `expo-audio.createAudioPlayer` and avoid `expo-file-system`.
+ */
+async function responseToDataUri(response: Response, mime: string): Promise<string> {
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  // Avoid String.fromCharCode(...bytes) — large buffers blow the call stack.
+  // Chunked accumulation keeps this safe up to ~10 MB.
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    binary += String.fromCharCode.apply(null, slice as unknown as number[]);
+  }
+  // `btoa` exists in RN ≥ 0.69 via the URL polyfill / Hermes. If it ever
+  // doesn't, swap to a Buffer-based encoder.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const base64 = (globalThis as any).btoa(binary);
+  return `data:${mime};base64,${base64}`;
+}
 
 export const speak = async (
   text: string,
@@ -42,33 +63,32 @@ export const speak = async (
     throw new ElevenLabsError('API key not configured');
   }
 
-  const voiceId = config?.voiceId || DEFAULT_VOICE_ID;
-  const modelId = config?.modelId || DEFAULT_MODEL_ID;
-  const cacheKey = `${voiceId}:${text}`;
+  const voiceId = config?.voiceId || ELEVENLABS.voiceId;
+  const modelId = config?.modelId || ELEVENLABS.ttsModel;
+  const cacheKey = `${voiceId}:${modelId}:${text}`;
   const cachedUrl = cachedAudio.get(cacheKey);
   if (cachedUrl) {
-    return { audioUrl: cachedUrl, audioBlob: new Blob([], { type: 'audio/mp3' }) };
+    return { audioUrl: cachedUrl, audioBlob: new Blob([], { type: 'audio/mpeg' }) };
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), ELEVENLABS.ttsTimeoutMs);
 
   try {
     const response = await fetch(
-      `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}`,
+      `${ELEVENLABS.apiBase}/text-to-speech/${voiceId}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
           'xi-api-key': apiKey,
         },
         body: JSON.stringify({
           text,
           model_id: modelId,
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-          },
+          voice_settings: ELEVENLABS.ttsVoiceSettings,
+          output_format: ELEVENLABS.ttsOutputFormat,
         }),
         signal: controller.signal,
       }
@@ -77,24 +97,21 @@ export const speak = async (
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const error = await response.text();
+      const error = await response.text().catch(() => '');
       throw new ElevenLabsError(`API error: ${error}`, response.status);
     }
 
-    const audioBlob = await response.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
+    const audioUrl = await responseToDataUri(response, 'audio/mpeg');
 
     if (cachedAudio.size >= MAX_CACHE_SIZE) {
       const firstKey = cachedAudio.keys().next().value;
       if (firstKey) {
-        const oldUrl = cachedAudio.get(firstKey);
-        if (oldUrl) URL.revokeObjectURL(oldUrl);
         cachedAudio.delete(firstKey);
       }
     }
     cachedAudio.set(cacheKey, audioUrl);
 
-    return { audioBlob, audioUrl };
+    return { audioBlob: new Blob([], { type: 'audio/mpeg' }), audioUrl };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof ElevenLabsError) {
@@ -117,7 +134,6 @@ export const speakAndPlay = async (
 };
 
 export const clearCache = (): void => {
-  cachedAudio.forEach((url) => URL.revokeObjectURL(url));
   cachedAudio.clear();
 };
 
@@ -125,6 +141,6 @@ export const availableVoices = [
   { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel' },
   { id: 'AZnzlk1XvdvchwBnXaMl', name: 'Domi' },
   { id: 'EXw4nqY7xTfnS2A7P8xL', name: 'Arnold' },
-  { id: 'MF4bmhG2ZsrAZZ7fNpB', name: 'Adam' },
+  { id: 'pNInz6obPmFL5MwgYpzn', name: 'Adam' },
   { id: 'pNInz6ob2mDXGfyi2Xv', name: 'Sam' },
 ];

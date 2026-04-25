@@ -8,6 +8,8 @@ public final class EchoLidarModule: Module {
 
   private let sessionController = EchoLidarSession()
   private let voiceCommandController = VoiceCommandController()
+  private let wakeWordListener = WakeWordListener()
+  private let queryRecorder = QueryAudioRecorder()
   private let gemma = GemmaInferenceController.shared
 
   /// Exposed so EchoLidarPreviewView + ARSnapshotCapture can attach to sharedARSession.
@@ -28,7 +30,7 @@ public final class EchoLidarModule: Module {
       self?.installThermalObserver()
     }
 
-    Events("onEchoUpdate", "onVoiceCommand", "onModelStatus", "onThermalState")
+    Events("onEchoUpdate", "onVoiceCommand", "onModelStatus", "onThermalState", "onWakeWord")
 
     View(EchoLidarPreviewView.self) {
       Prop("showHeatmap") { (view: EchoLidarPreviewView, value: Bool?) in
@@ -87,18 +89,94 @@ public final class EchoLidarModule: Module {
       }
     }
 
-    // MARK: - Native speech (orchestrator-driven)
+    // MARK: - Wake-word listener (Phase 2)
 
-    AsyncFunction("speak") { [weak self] (text: String) in
-      await MainActor.run {
-        self?.speechController.say(text)
+    /// Continuous on-device "hey echo" / "echo" recognizer. Emits `onWakeWord`
+    /// when matched. Caller (the JS orchestrator) typically stops this before
+    /// recording the user's query so the mic isn't double-claimed.
+    AsyncFunction("startWakeListener") { [weak self] in
+      guard let self else { return }
+      try await self.wakeWordListener.start { [weak self] phrase in
+        self?.sendEvent("onWakeWord", [
+          "phrase": phrase,
+          "timestampMs": Int(Date().timeIntervalSince1970 * 1000)
+        ])
       }
     }
 
-    AsyncFunction("stopSpeaking") { [weak self] in
+    AsyncFunction("stopWakeListener") { [weak self] in
       await MainActor.run {
-        self?.speechController.stop()
+        self?.wakeWordListener.stop()
       }
+    }
+
+    // MARK: - Query audio recording (Phase 3)
+
+    /// Records up to `maxSeconds` (default 6) of microphone audio to a temp
+    /// M4A file at 16 kHz mono. Returns the file URL as a string. The JS side
+    /// hands the URL to ElevenLabs Scribe for transcription.
+    AsyncFunction("recordQueryAudio") { [weak self] (maxSeconds: Double?) -> String in
+      guard let self else { return "" }
+      let url = try await self.queryRecorder.record(maxSeconds: maxSeconds ?? 6.0)
+      return url.absoluteString
+    }
+
+    AsyncFunction("stopQueryAudio") { [weak self] in
+      await MainActor.run {
+        self?.queryRecorder.stop()
+      }
+    }
+
+    // MARK: - Gemma vision Q&A (Phase 4)
+
+    /// One-sentence answer to a transcribed user question, grounded in the
+    /// current AR camera frame + latest LiDAR snapshot. Returns plain string.
+    AsyncFunction("quickQuery") { [weak self] (
+      question: String,
+      distanceM: Double,
+      direction: String,
+      label: String
+    ) -> String in
+      guard let self else { return "" }
+      let image = try ARSnapshotCapture.captureCurrentFrame()
+      return try await self.gemma.quickQuery(
+        question: question,
+        distanceM: distanceM,
+        direction: direction,
+        label: label,
+        image: image
+      )
+    }
+
+    /// Wake-only briefing: 1–2 sentence description of the user's surroundings
+    /// + recommended next move. Triggered by "hey echo" — no user query text.
+    AsyncFunction("wakeBriefing") { [weak self] (
+      distanceM: Double,
+      direction: String,
+      label: String
+    ) -> String in
+      guard let self else { return "" }
+      let image = try ARSnapshotCapture.captureCurrentFrame()
+      return try await self.gemma.wakeBriefing(
+        image: image,
+        distanceM: distanceM,
+        direction: direction,
+        label: label
+      )
+    }
+
+    // MARK: - Native speech (DISABLED — ElevenLabs-only)
+
+    /// ElevenLabs-only mode: native AVSpeechSynthesizer is intentionally
+    /// disabled so the user can never hear the iPhone's built-in voice as a
+    /// fallback. Calls here are no-ops. See plan
+    /// 260425-1648-elevenlabs-only-and-auto-start.
+    AsyncFunction("speak") { (_: String) in
+      NSLog("[EchoLidar] speak() called but ignored — app is ElevenLabs-only")
+    }
+
+    AsyncFunction("stopSpeaking") {
+      // Nothing to stop — ElevenLabs player on the JS side owns its own playback.
     }
 
     /// Voice-command path opens this gate before speaking. Suppresses the

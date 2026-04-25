@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Spacing } from '@/constants/theme';
 import type { useEchoLidar } from '@/hooks/use-echo-lidar';
-import { useVoiceOrchestrator } from '@/hooks/use-voice-orchestrator';
+import { isConfigured as isElevenLabsConfigured } from '@/services/elevenlabsTts';
 
 type EchoState = ReturnType<typeof useEchoLidar>;
 
@@ -35,9 +35,7 @@ function describeModelStatus(s: EchoState['modelStatus']): string {
 export function EchoStatusSheet({ state }: { state: EchoState }) {
   const {
     latest,
-    latestCommand,
     running,
-    listening,
     error,
     isSupported,
     supportsDepth,
@@ -47,7 +45,7 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
     downloadModel,
     cancelModelDownload,
   } = state;
-  const voice = useVoiceOrchestrator();
+  const elevenLabsReady = isElevenLabsConfigured();
 
   return (
     <BottomSheetView style={styles.container}>
@@ -57,8 +55,13 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
         <Row label="ARKit supported" value={isSupported ? '✓' : '✗'} />
         <Row label="LiDAR depth" value={supportsDepth ? '✓' : '✗'} />
         <Row label="Status" value={running ? 'running' : 'stopped'} />
-        <Row label="Voice" value={listening ? 'listening' : 'off'} />
       </View>
+
+      {!elevenLabsReady ? (
+        <Text style={[styles.small, styles.error, styles.center]}>
+          ElevenLabs API key not set — speech will be silent.
+        </Text>
+      ) : null}
 
       {latest ? (
         <View style={styles.card}>
@@ -73,18 +76,11 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
         </View>
       ) : (
         <View style={styles.card}>
-          <Text style={[styles.small, styles.muted, styles.center]}>no data yet — tap Start</Text>
+          <Text style={[styles.small, styles.muted, styles.center]}>
+            no LiDAR data yet — tap Start
+          </Text>
         </View>
       )}
-
-      <View style={styles.card}>
-        <Row label="Last command" value={latestCommand?.command ?? '—'} />
-        <Row label="Transcript" value={latestCommand?.transcript ?? '—'} />
-        <Row label="Voice" value={voice.status} />
-        {voice.lastSentence ? (
-          <Row label="Last reply" value={voice.lastSentence} />
-        ) : null}
-      </View>
 
       <View style={styles.card}>
         <Row label="AI scene model" value={describeModelStatus(modelStatus)} />

@@ -38,6 +38,18 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     didSet { speechController.eventDrivenActive = eventDrivenSpeechEnabled }
   }
 
+  /// When true, the app is silent: always-on speech is suppressed AND danger
+  /// triggers do NOT dispatch summaries. The wake-word voice-mode (Phase 2+)
+  /// is the only path that can produce speech. Toggleable via JS
+  /// `setVoiceModeMuted(_:)` — defaults `false` so existing behavior is intact.
+  var voiceModeMuted: Bool = false {
+    didSet {
+      if voiceModeMuted {
+        speechController.stop()
+      }
+    }
+  }
+
   /// Single in-flight summary at a time so back-to-back triggers don't pile
   /// concurrent Gemma calls (the controller's own mutex would coalesce, but
   /// we never want even ONE queued behind a current speech utterance).
@@ -119,13 +131,16 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       observationBuffer.append(snap)
       if let trigger = dangerDetector.observe(snap) {
         NSLog("[EchoLidar] DANGER trigger (conf=%.2f): %@", confidence, "\(trigger)")
-        if eventDrivenSpeechEnabled {
+        if eventDrivenSpeechEnabled && !voiceModeMuted {
           dispatchTriggeredSummary(snap: snap, trigger: trigger, frame: frame)
         }
       }
     }
 
-    speechController.process(update: update, mode: mode)
+    // Always-on template path also gated by voice-mode mute.
+    if !voiceModeMuted {
+      speechController.process(update: update, mode: mode)
+    }
     sendEvent?("onEchoUpdate", update)
   }
 
@@ -156,9 +171,15 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
         let sentence = try await GemmaInferenceController.shared.quickSummarize(
           history: history, image: image
         )
-        let elapsedMs = (CACurrentMediaTime() - started) * 1000
-        NSLog("[EchoLidar] DANGER summary OK (%.0fms): %@", elapsedMs, sentence)
-        await MainActor.run { self?.speechController.say(sentence) }
+        let elapsedMs = Int((CACurrentMediaTime() - started) * 1000)
+        NSLog("[EchoLidar] DANGER summary OK (%dms): %@", elapsedMs, sentence)
+        await MainActor.run {
+          self?.sendEvent?("onDangerSpeech", [
+            "sentence": sentence,
+            "source": "gemma",
+            "latencyMs": elapsedMs
+          ])
+        }
       } catch {
         await self?.speakFallback(snap: snap)
         NSLog("[EchoLidar] DANGER summary FAILED — fallback engaged: %@", "\(error)")
@@ -173,7 +194,11 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       distance: snap.distanceM,
       label: snap.label
     )
-    speechController.say(sentence)
+    sendEvent?("onDangerSpeech", [
+      "sentence": sentence,
+      "source": "lidar-fallback",
+      "latencyMs": 0
+    ])
   }
 
   /// Compact history string for Gemma's prompt: oldest first, time deltas in
