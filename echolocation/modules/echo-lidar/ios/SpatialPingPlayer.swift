@@ -128,8 +128,6 @@ final class SpatialPingPlayer {
   private func emitPing(at timestamp: TimeInterval = CACurrentMediaTime()) {
     guard running, !muted, let buffer = pingBuffer else { return }
     lastPingAt = timestamp
-    ensureAudioSession()
-    ensurePlaybackChain()
     updatePlayerPosition()
     player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
   }
