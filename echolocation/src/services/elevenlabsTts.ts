@@ -162,7 +162,7 @@ export const clearCache = (): void => {
 export const availableVoices = [
   { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel' },
   { id: 'AZnzlk1XvdvchwBnXaMl', name: 'Domi' },
-  { id: 'EXw4nqY7xTfnS2A7P8xL', name: 'Arnold' },
+  { id: 'zmcVlqmyk3Jpn5AVYcAL', name: 'Arnold' },
   { id: 'MF4bmhG2ZsrAZZ7fNpB', name: 'Adam' },
   { id: 'pNInz6ob2mDXGfyi2Xv', name: 'Sam' },
 ];
