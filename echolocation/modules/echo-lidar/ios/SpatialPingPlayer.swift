@@ -3,8 +3,8 @@ import Foundation
 import simd
 
 /// Plays a short HRTF-spatialized ping continuously, positioned at the
-/// nearest obstacle in world space. Cadence is purely time-based so the
-/// ping plays continuously with a simple, fixed rhythm.
+/// nearest obstacle in world space. The tone stays fixed while the
+/// repeat interval gets shorter as obstacles get closer.
 final class SpatialPingPlayer {
   private let engine = AVAudioEngine()
   private let environment = AVAudioEnvironmentNode()
@@ -15,15 +15,20 @@ final class SpatialPingPlayer {
 
   private var listenerTransform: simd_float4x4 = matrix_identity_float4x4
   private var emitterWorldPoint: SIMD3<Float>?
+  private var emitterDistance: Float?
 
   private var muted: Bool = false
   private var running: Bool = false
+  private var lastPingAt: TimeInterval = 0
 
   private let sampleRate: Double = 44_100
   private let pingDurationSec: Double = 0.18
   private let baseFrequency: Float = 880
   private let defaultDistanceMeters: Float = 1.5
-  private let pingIntervalSec: TimeInterval = 0.22
+  private let defaultPingIntervalSec: TimeInterval = 0.24
+  private let minPingIntervalSec: TimeInterval = 0.18
+  private let maxPingIntervalSec: TimeInterval = 0.42
+  private let timerResolutionSec: TimeInterval = 0.05
 
   func start() {
     guard !running else { return }
@@ -39,7 +44,7 @@ final class SpatialPingPlayer {
     ensurePlaybackChain()
     running = true
     schedulePings()
-    playPing()
+    emitPing()
   }
 
   func stop() {
@@ -47,6 +52,7 @@ final class SpatialPingPlayer {
     pingTimer = nil
     player.stop()
     engine.stop()
+    lastPingAt = 0
     running = false
   }
 
@@ -76,8 +82,9 @@ final class SpatialPingPlayer {
     )
   }
 
-  func updateEmitter(worldPoint: SIMD3<Float>?, distance _: Float?) {
+  func updateEmitter(worldPoint: SIMD3<Float>?, distance: Float?) {
     emitterWorldPoint = worldPoint
+    emitterDistance = distance
     updatePlayerPosition()
   }
 
@@ -103,19 +110,37 @@ final class SpatialPingPlayer {
 
   private func schedulePings() {
     pingTimer?.invalidate()
-    let timer = Timer.scheduledTimer(withTimeInterval: pingIntervalSec, repeats: true) { [weak self] _ in
-      self?.playPing()
+    let timer = Timer.scheduledTimer(withTimeInterval: timerResolutionSec, repeats: true) { [weak self] _ in
+      self?.tickIfDue()
     }
-    timer.tolerance = pingIntervalSec * 0.15
+    timer.tolerance = timerResolutionSec * 0.2
     pingTimer = timer
   }
 
-  private func playPing() {
+  private func tickIfDue() {
+    guard running, !muted else { return }
+    let now = CACurrentMediaTime()
+    guard now - lastPingAt >= currentPingInterval() else { return }
+    emitPing(at: now)
+  }
+
+  private func emitPing(at timestamp: TimeInterval = CACurrentMediaTime()) {
     guard running, !muted, let buffer = pingBuffer else { return }
+    lastPingAt = timestamp
     ensureAudioSession()
     ensurePlaybackChain()
     updatePlayerPosition()
     player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
+  }
+
+  private func currentPingInterval() -> TimeInterval {
+    guard let distance = emitterDistance else {
+      return defaultPingIntervalSec
+    }
+
+    let clampedDistance = max(0.4, min(4.0, distance))
+    let normalized = (clampedDistance - 0.4) / 3.6
+    return minPingIntervalSec + (TimeInterval(normalized) * (maxPingIntervalSec - minPingIntervalSec))
   }
 
   private func updatePlayerPosition() {
