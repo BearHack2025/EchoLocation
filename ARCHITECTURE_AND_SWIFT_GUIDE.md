@@ -530,7 +530,7 @@ This project uses ElevenLabs for premium voice output (TTS) with different voice
 | Mode | Voice ID | Voice Name | Purpose |
 |------|----------|------------|---------|
 | **Echo** | `21m00Tcm4TlvDq8ikWAM` | Rachel | Quick, clear status updates |
-| **Describe** | `EXw4nqY7xTfnS2A7P8xL` | Arnold | Rich, detailed descriptions |
+| **Describe** | `zmcVlqmyk3Jpn5AVYcAL` | Arnold | Rich, detailed descriptions |
 
 ### Implementation Files
 
