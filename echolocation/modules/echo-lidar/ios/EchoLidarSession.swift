@@ -94,7 +94,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     if mode != "quiet" {
       ocrDetector.detectIfReady(frame: frame) { [weak self] text in
         guard let self else { return }
-        guard self.speechController?.isSpeaking == false else { return }
+        print("[OCR] speaking: \(text)")
         self.speechController?.speakBuiltinText(text)
         self.sendEvent?("onOcrText", [
           "text": text,

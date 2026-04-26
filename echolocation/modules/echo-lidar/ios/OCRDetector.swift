@@ -50,10 +50,15 @@ final class OCRDetector {
       do {
         try handler.perform([request])
       } catch {
+        print("[OCR] vision error: \(error)")
         return
       }
 
-      guard let observations = request.results, !observations.isEmpty else { return }
+      guard let observations = request.results, !observations.isEmpty else {
+        print("[OCR] no text observations")
+        return
+      }
+      print("[OCR] \(observations.count) observations")
 
       var pieces: [String] = []
       for obs in observations {
