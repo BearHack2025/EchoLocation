@@ -28,7 +28,14 @@ export type EchoSupportStatus = {
   supportsMeshClassification: boolean;
 };
 
-export type VoiceCommandName = 'ahead' | 'left' | 'right' | 'repeat';
+export type VoiceCommandName =
+  | 'ahead'
+  | 'left'
+  | 'right'
+  | 'repeat'
+  | 'describe_mode'
+  | 'quiet_mode'
+  | 'stop';
 
 export type VoiceCommandEvent = {
   command: VoiceCommandName;

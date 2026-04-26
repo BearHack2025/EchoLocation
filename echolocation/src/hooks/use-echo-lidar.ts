@@ -23,6 +23,8 @@ export function useEchoLidar() {
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const speechReleaseRef = useRef<((ok: boolean, message?: string) => void) | null>(null);
+  const lastSpokenTextRef = useRef<string | null>(null);
+  const lastHandledCommandTimestampRef = useRef<number>(0);
 
   const isSupported = EchoLidarModule.isSupported();
   const supportsDepth = EchoLidarModule.supportsDepth();
@@ -123,6 +125,7 @@ export function useEchoLidar() {
 
   const handleSpeechRequest = useCallback(async (event: { text: string; mode: string }) => {
     const { text, mode } = event;
+    lastSpokenTextRef.current = text;
 
     try {
       const audioUrl = await speakWithFallback(text, mode as SpeechMode);
@@ -134,6 +137,27 @@ export function useEchoLidar() {
       EchoLidarModule.onSpeechFailed(message).catch(() => {});
     }
   }, [playAudioUrl]);
+
+  const buildLatestSummary = useCallback((update: EchoUpdate | null): string => {
+    if (!update || update.nearestDistanceMeters == null) {
+      return 'Nothing detected right now.';
+    }
+
+    let distance = 'unknown distance';
+    if (update.nearestDistanceMeters < 1.0) {
+      distance = 'very close';
+    } else if (update.nearestDistanceMeters < 2.0) {
+      distance = `${Math.round(update.nearestDistanceMeters * 10) / 10} meters`;
+    } else {
+      distance = `${Math.round(update.nearestDistanceMeters)} meters`;
+    }
+
+    if (update.direction === 'center') {
+      return `${update.label} ahead, ${distance}`;
+    }
+
+    return `${update.label} to your ${update.direction}, ${distance}`;
+  }, []);
 
   const stopSession = useCallback(async () => {
     await EchoLidarModule.stopVoiceCommands();
@@ -150,7 +174,7 @@ export function useEchoLidar() {
     await EchoLidarModule.stop();
   }, []);
 
-  const start = async (nextMode: EchoMode = 'describe') => {
+  const start = useCallback(async (nextMode: EchoMode = 'describe') => {
     if (!isElevenLabsConfigured()) {
       setError('ElevenLabs voice is required. Set EXPO_PUBLIC_ELEVENLABS_API_KEY to enable spoken feedback.');
       setUseBuiltin(false);
@@ -179,15 +203,16 @@ export function useEchoLidar() {
       setRunning(false);
       setError(e instanceof Error ? e.message : String(e));
     }
-  };
+  }, [running, stopSession]);
 
-  const stop = async () => {
+  const stop = useCallback(async () => {
     await stopSession();
     setRunning(false);
     setMode('describe');
-  };
+  }, [stopSession]);
 
   const speakCommand = useCallback(async (text: string): Promise<boolean> => {
+    lastSpokenTextRef.current = text;
     try {
       const audioUrl = await speakWithFallback(text, 'describe');
       await playAudioUrl(audioUrl);
@@ -199,6 +224,48 @@ export function useEchoLidar() {
       return false;
     }
   }, [playAudioUrl]);
+
+  useEffect(() => {
+    if (!latestCommand) {
+      return;
+    }
+
+    if (latestCommand.timestampMs <= lastHandledCommandTimestampRef.current) {
+      return;
+    }
+
+    lastHandledCommandTimestampRef.current = latestCommand.timestampMs;
+
+    void (async () => {
+      switch (latestCommand.command) {
+      case 'repeat': {
+        const phrase = lastSpokenTextRef.current ?? 'Nothing to repeat yet.';
+        await speakCommand(phrase);
+        break;
+      }
+      case 'ahead':
+        await speakCommand(buildLatestSummary(latest));
+        break;
+      case 'describe_mode':
+        if (!running || mode !== 'describe') {
+          await start('describe');
+        }
+        await speakCommand('Describe mode enabled.');
+        break;
+      case 'quiet_mode':
+        if (!running || mode !== 'quiet') {
+          await start('quiet');
+        }
+        await speakCommand('Quiet mode enabled.');
+        break;
+      case 'stop':
+        await stop();
+        break;
+      default:
+        break;
+      }
+    })();
+  }, [latestCommand, latest, mode, running, speakCommand, start, stop, buildLatestSummary]);
 
   useEffect(() => {
     const echoSub = EchoLidarEmitter.addListener('onEchoUpdate', (event) => {

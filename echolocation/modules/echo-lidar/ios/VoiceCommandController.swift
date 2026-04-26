@@ -254,6 +254,15 @@ final class VoiceCommandController: NSObject {
   private func matchedCommand(from transcript: String) -> String? {
     let text = transcript.lowercased()
 
+    if text.contains("describe mode") || text.contains("description mode") {
+      return "describe_mode"
+    }
+    if text.contains("quiet mode") || text.contains("silent mode") {
+      return "quiet_mode"
+    }
+    if text.contains("stop") {
+      return "stop"
+    }
     if text.contains("repeat") {
       return "repeat"
     }
