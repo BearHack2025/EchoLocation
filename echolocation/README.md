@@ -1,56 +1,178 @@
-# Welcome to your Expo app 👋
+# Echolocation
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A head-worn spatial awareness companion for iPhone. Combines on-device LiDAR, ARKit scene understanding, ML Kit object detection, Gemma scene reasoning, and ElevenLabs voice I/O so the user can ask "what's ahead?" and get a one-sentence spoken answer about nearby obstacles.
 
-## Get started
 
-1. Install dependencies
+## Demo flow
 
-   ```bash
-   npm install
-   ```
+1. App boots, ARKit session starts, LiDAR streams depth + mesh anchors.
+2. User says a wake word (`Hey Echo`) followed by a short query: `what's ahead`, `what's on my left`, `repeat`, `is this familiar`.
+3. ElevenLabs STT transcribes the command.
+4. App captures the current frame, runs ML Kit object detection, and queries Gemma 4 for a one-sentence summary.
+5. ElevenLabs TTS speaks the answer.
+6. The on-screen "cyclops" overlay shows distance/direction/object live and the eyeball + light cone tilt to the detected zone.
 
-2. Start the app
+## Tech stack
 
-   ```bash
-   npx expo start
-   ```
+| Layer | Choice |
+|-------|--------|
+| Runtime | Expo SDK 55, React Native 0.83, React 19 |
+| Routing | `expo-router` (file-based) |
+| 3D / spatial | ARKit + LiDAR (iOS native via Swift) |
+| Object detection | Google ML Kit (on-device) |
+| Scene reasoning | Gemma 4 (E2B / 4B variant) |
+| Speech | ElevenLabs STT + TTS, `expo-speech` fallback |
+| Audio | `expo-audio`, `SpatialPingPlayer` (native) |
+| UI | React Native + `react-native-svg`, `@gorhom/bottom-sheet`, `react-native-reanimated` |
+| Native bridge | Custom Expo Module (`echo-lidar`, Swift) |
+| Lang | TypeScript 5.9 |
 
-In the output, you'll find options to open the app in a
+iOS only (LiDAR-equipped iPhone Pro / Pro Max recommended). Android target is a stub.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Architecture overview
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+┌─────────────────────────────────────────────────────────────┐
+│  React Native (TypeScript)                                  │
+│                                                             │
+│  src/app/index.tsx          ← entry screen                  │
+│   ├─ <EchoLidarPreview/>   ← native ARKit camera view       │
+│   ├─ <EchoInfoPanel/>      ← top-right HUD (dist/dir/obj)   │
+│   ├─ <CyclopsFigure/>      ← animated SVG mascot            │
+│   └─ <BottomSheet>         ← debug / status panel           │
+│                                                             │
+│  src/hooks/use-echo-lidar.ts                                │
+│   └─ subscribes to native EchoLidarEmitter                  │
+│                                                             │
+│  src/services/                                              │
+│   ├─ audio-service.ts      ← unified speech facade          │
+│   ├─ elevenlabsStt.ts      ← realtime STT WS client         │
+│   └─ elevenlabsTts.ts      ← TTS playback                   │
+└──────────────┬──────────────────────────────────────────────┘
+               │  Expo Module bridge (events + methods)
+┌──────────────▼──────────────────────────────────────────────┐
+│  modules/echo-lidar/  (Swift, iOS only)                     │
+│                                                             │
+│  EchoLidarModule           ← module registration            │
+│  EchoLidarSession          ← ARKit session lifecycle        │
+│  EchoLidarPreviewView      ← Metal-backed camera view       │
+│  DepthAnalyzer             ← LiDAR depth sampling           │
+│  MeshAnchorRenderer        ← scene-mesh wireframe overlay   │
+│  MeshDistanceShader        ← MSL shader for distance heatmap│
+│  MeshClassifier            ← scene-mesh semantic class      │
+│  MLKitObjectDetector       ← on-device object boxes         │
+│  ObjectAnchorTracker       ← anchor smoothing across frames │
+│  OCRDetector               ← text-in-scene capture          │
+│  SpatialPingPlayer         ← directional audio ping         │
+│  SpeechController          ← native fallback TTS            │
+│  VoiceCommandController    ← wake-word + intent parsing     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Per-frame data path: ARKit → `DepthAnalyzer` → nearest-distance + zone (left/center/right) → JS event → `useEchoLidar` → UI re-render. On voice trigger: STT → command intent → Gemma 4 prompt with object boxes → TTS playback.
 
-### Other setup steps
+## Project structure
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```
+echolocation/
+├── src/
+│   ├── app/                          ← expo-router screens
+│   │   ├── _layout.tsx               ← root nav
+│   │   ├── index.tsx                 ← main echolocation screen
+│   │   └── explore.tsx               ← debug / settings
+│   ├── components/
+│   │   ├── cyclops/                  ← animated mascot (body/eye/eyeball/cone SVGs)
+│   │   ├── echo-info-panel.tsx       ← top-right Distance/Direction/Object
+│   │   ├── echo-status-sheet.tsx     ← bottom sheet content
+│   │   └── ui/                       ← shared primitives
+│   ├── hooks/
+│   │   ├── use-echo-lidar.ts         ← native event subscription + state
+│   │   ├── use-eleven-labs.ts        ← STT/TTS lifecycle
+│   │   └── use-theme.ts
+│   ├── services/
+│   │   ├── audio-service.ts          ← speech routing facade
+│   │   ├── elevenlabsStt.ts          ← WS streaming STT
+│   │   ├── elevenlabsTts.ts          ← TTS playback
+│   │   └── audio-logger.ts
+│   ├── constants/
+│   ├── types/
+│   └── global.css
+│
+├── modules/
+│   └── echo-lidar/                   ← custom Expo Module
+│       ├── ios/                      ← Swift implementation
+│       ├── src/                      ← TS bindings
+│       ├── android/                  ← stub
+│       └── EchoLidar.podspec
+│
+├── assets/
+│   └── cyclops/                      ← SVG source files for mascot
+│
+├── ios/                              ← prebuild output (generated)
+├── android/                          ← prebuild output (generated)
+├── scripts/
+├── plans/                            ← project plans (markdown)
+├── docs/                             ← project docs
+├── app.json
+├── package.json
+└── tsconfig.json
+```
 
-## Learn more
+## Prerequisites
 
-To learn more about developing your project with Expo, look at the following resources:
+- macOS with Xcode 16+ (for iOS build)
+- Node.js 20+
+- CocoaPods (`sudo gem install cocoapods`)
+- A LiDAR-equipped iPhone (12 Pro / 13 Pro / 14 Pro / 15 Pro / 16 Pro, or any Pro Max)
+- ElevenLabs API key
+- (Optional) Gemma model endpoint or local inference
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Install
 
-## Join the community
+```bash
+git clone <repo-url>
+cd echolocation
+npm install
+```
 
-Join our community of developers creating universal apps.
+Create `.env` at the project root:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```env
+EXPO_PUBLIC_ELEVENLABS_API_KEY=sk_xxx
+# optional
+EXPO_PUBLIC_GEMMA_ENDPOINT=https://...
+```
+
+iOS native build:
+
+```bash
+npx expo prebuild --platform ios
+cd ios && pod install && cd ..
+```
+
+## Run
+
+```bash
+# iOS device (recommended — LiDAR required)
+npm run ios -- --device
+
+# iOS simulator (no LiDAR — UI only)
+npm run ios
+
+# Metro only (if app already installed)
+npm start
+```
+
+Web / Android targets compile but are non-functional for the LiDAR pipeline.
+
+## Scripts
+
+| Command | What it does |
+|---------|--------------|
+| `npm start` | Start Metro bundler |
+| `npm run ios` | Build & launch on iOS |
+| `npm run android` | Build & launch on Android (stub) |
+| `npm run web` | Web preview |
+| `npm run lint` | ESLint |
+| `npm run reset-project` | Move starter to `app-example/` |
+
