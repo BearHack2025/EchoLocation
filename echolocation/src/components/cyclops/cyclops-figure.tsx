@@ -97,9 +97,9 @@ export function CyclopsFigure({ state, bottomOffset, showCone = true }: Props) {
               height: coneHeight,
               transform: [
                 { translateX: offsetAnim },
-                { translateY: -coneHeight / 2 },
-                { rotate: coneRotation },
                 { translateY: coneHeight / 2 },
+                { rotate: coneRotation },
+                { translateY: -coneHeight / 2 },
               ],
             },
           ]}
