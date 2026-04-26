@@ -99,7 +99,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
         worldPoint: depthAnalyzer.lastNearestWorldPoint,
         distance: depthAnalyzer.lastNearestDistance
       )
-      pingPlayer.setMuted(mode != "echo" && (speechController?.isSpeaking ?? false))
+      pingPlayer.setMuted(false)
     }
 
     speechController?.process(update: update, mode: mode) { [weak self] text, speechMode in
