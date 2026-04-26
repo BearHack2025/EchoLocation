@@ -91,7 +91,7 @@ final class SpatialPingPlayer {
   // MARK: Private
 
   private func setupEngine() {
-    environment.renderingAlgorithm = .HRTFHQ
+    environment.renderingAlgorithm = .HRTF
     environment.distanceAttenuationParameters.distanceAttenuationModel = .inverse
     environment.distanceAttenuationParameters.referenceDistance = 0.5
     environment.distanceAttenuationParameters.maximumDistance = 8.0
@@ -104,7 +104,7 @@ final class SpatialPingPlayer {
     engine.connect(player, to: environment, format: monoFormat)
     engine.connect(environment, to: engine.mainMixerNode, format: nil)
 
-    player.renderingAlgorithm = .HRTFHQ
+    player.renderingAlgorithm = .HRTF
     player.sourceMode = .pointSource
   }
 
@@ -128,8 +128,9 @@ final class SpatialPingPlayer {
   private func emitPing(at timestamp: TimeInterval = CACurrentMediaTime()) {
     guard running, !muted, let buffer = pingBuffer else { return }
     lastPingAt = timestamp
+    ensurePlaybackChain()
     updatePlayerPosition()
-    player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
+    player.scheduleBuffer(buffer, at: nil, completionHandler: nil)
   }
 
   private func currentPingInterval() -> TimeInterval {
