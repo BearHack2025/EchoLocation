@@ -110,10 +110,11 @@ final class SpatialPingPlayer {
 
   private func schedulePings() {
     pingTimer?.invalidate()
-    let timer = Timer.scheduledTimer(withTimeInterval: timerResolutionSec, repeats: true) { [weak self] _ in
+    let timer = Timer(timeInterval: timerResolutionSec, repeats: true) { [weak self] _ in
       self?.tickIfDue()
     }
     timer.tolerance = timerResolutionSec * 0.2
+    RunLoop.main.add(timer, forMode: .common)
     pingTimer = timer
   }
 
