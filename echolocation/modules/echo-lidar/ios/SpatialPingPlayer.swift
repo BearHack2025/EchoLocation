@@ -23,6 +23,7 @@ final class SpatialPingPlayer {
   private let sampleRate: Double = 44_100
   private let pingDurationSec: Double = 0.06
   private let baseFrequency: Float = 880
+  private let defaultDistanceMeters: Float = 1.5
 
   func start() {
     guard !running else { return }
@@ -78,9 +79,7 @@ final class SpatialPingPlayer {
   func updateEmitter(worldPoint: SIMD3<Float>?, distance: Float?) {
     emitterWorldPoint = worldPoint
     emitterDistance = distance
-    if let worldPoint {
-      player.position = AVAudio3DPoint(x: worldPoint.x, y: worldPoint.y, z: worldPoint.z)
-    }
+    updatePlayerPosition()
   }
 
   // MARK: Private
@@ -115,12 +114,13 @@ final class SpatialPingPlayer {
   private var lastPingAt: TimeInterval = 0
 
   private func tickIfDue() {
-    guard running, !muted, let buffer = pingBuffer, emitterWorldPoint != nil else { return }
+    guard running, !muted, let buffer = pingBuffer else { return }
     let now = CACurrentMediaTime()
     let interval = pingInterval(forDistance: emitterDistance)
     guard now - lastPingAt >= interval else { return }
     lastPingAt = now
     ensureAudioSession()
+    updatePlayerPosition()
 
     // Re-synthesize buffer if pitch should change with distance.
     let frequency = pitch(forDistance: emitterDistance)
@@ -132,7 +132,7 @@ final class SpatialPingPlayer {
   }
 
   private func pingInterval(forDistance distance: Float?) -> TimeInterval {
-    guard let d = distance else { return 1.0 }
+    guard let d = distance else { return 0.45 }
     // Closer = faster pings: 0.3s at 0.5m, 1.5s at 5m.
     let clamped = max(0.5, min(5.0, d))
     let t = (clamped - 0.5) / 4.5
@@ -140,11 +140,32 @@ final class SpatialPingPlayer {
   }
 
   private func pitch(forDistance distance: Float?) -> Float {
-    guard let d = distance else { return baseFrequency }
+    guard let d = distance else { return 1_000 }
     // Closer = higher pitch: 1320 Hz at 0.5m, 660 Hz at 5m.
     let clamped = max(0.5, min(5.0, d))
     let t = (clamped - 0.5) / 4.5
     return 1320 - Float(t) * 660
+  }
+
+  private func updatePlayerPosition() {
+    let worldPoint = emitterWorldPoint ?? defaultEmitterWorldPoint()
+    player.position = AVAudio3DPoint(x: worldPoint.x, y: worldPoint.y, z: worldPoint.z)
+  }
+
+  private func defaultEmitterWorldPoint() -> SIMD3<Float> {
+    let origin = SIMD3<Float>(
+      listenerTransform.columns.3.x,
+      listenerTransform.columns.3.y,
+      listenerTransform.columns.3.z
+    )
+    let forward = simd_normalize(
+      SIMD3<Float>(
+        -listenerTransform.columns.2.x,
+        -listenerTransform.columns.2.y,
+        -listenerTransform.columns.2.z
+      )
+    )
+    return origin + (forward * defaultDistanceMeters)
   }
 
   private func synthesizePing(frequency: Float) -> AVAudioPCMBuffer? {

@@ -49,10 +49,10 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
       <View style={styles.buttons}>
         <Pressable
           style={[styles.btn, styles.btnStart, running && styles.btnDisabled]}
-          onPress={() => start('describe')}
+          onPress={() => start('echo')}
           disabled={running}
         >
-          <Text style={[styles.smallBold, styles.btnLabel]}>Start</Text>
+          <Text style={[styles.smallBold, styles.btnLabel]}>Start Echo</Text>
         </Pressable>
         <Pressable
           style={[styles.btn, styles.btnStop, !running && styles.btnDisabled]}

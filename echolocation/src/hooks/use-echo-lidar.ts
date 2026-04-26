@@ -199,7 +199,7 @@ export function useEchoLidar() {
     return null;
   };
 
-  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'describe') => {
+  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'echo') => {
     if (!isElevenLabsConfigured() || !isElevenSttConfigured()) {
       setError('ElevenLabs is required. Set EXPO_PUBLIC_ELEVENLABS_API_KEY to enable voice and speech-to-text.');
       setUseBuiltin(false);
