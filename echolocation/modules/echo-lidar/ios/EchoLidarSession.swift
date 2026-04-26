@@ -103,18 +103,21 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       }
     }
 
-    guard let update = depthAnalyzer.analyze(frame: frame, mode: mode, tracker: objectTracker) else {
-      return
-    }
-
     if spatialPingsEnabled {
       pingPlayer.updateListener(transform: frame.camera.transform)
+      pingPlayer.setMuted(false)
+    }
+
+    let update = depthAnalyzer.analyze(frame: frame, mode: mode, tracker: objectTracker)
+
+    if spatialPingsEnabled {
       pingPlayer.updateEmitter(
         worldPoint: depthAnalyzer.lastNearestWorldPoint,
         distance: depthAnalyzer.lastNearestDistance
       )
-      pingPlayer.setMuted(false)
     }
+
+    guard let update else { return }
 
     speechController?.process(update: update, mode: mode) { [weak self] text, speechMode in
       self?.sendEvent?("onSpeechRequest", [

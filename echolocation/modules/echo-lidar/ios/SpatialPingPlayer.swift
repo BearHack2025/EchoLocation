@@ -26,7 +26,7 @@ final class SpatialPingPlayer {
   private let baseFrequency: Float = 880
   private let defaultDistanceMeters: Float = 1.5
   private let defaultPingIntervalSec: TimeInterval = 0.24
-  private let minPingIntervalSec: TimeInterval = 0.18
+  private let minPingIntervalSec: TimeInterval = 0.10
   private let maxPingIntervalSec: TimeInterval = 0.42
   private let timerResolutionSec: TimeInterval = 0.05
 
@@ -138,9 +138,12 @@ final class SpatialPingPlayer {
       return defaultPingIntervalSec
     }
 
-    let clampedDistance = max(0.4, min(4.0, distance))
-    let normalized = (clampedDistance - 0.4) / 3.6
-    return minPingIntervalSec + (TimeInterval(normalized) * (maxPingIntervalSec - minPingIntervalSec))
+    let nearMeters: Float = 0.15
+    let farMeters: Float = 4.0
+    let clampedDistance = max(nearMeters, min(farMeters, distance))
+    let normalized = (clampedDistance - nearMeters) / (farMeters - nearMeters)
+    let curved = TimeInterval(normalized * normalized)
+    return minPingIntervalSec + (curved * (maxPingIntervalSec - minPingIntervalSec))
   }
 
   private func updatePlayerPosition() {
