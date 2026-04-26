@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
-import type { EchoUpdate, VoiceCommandEvent, AudioChunkEvent, VoiceCommandName } from 'echo-lidar';
+import type { EchoUpdate, VoiceCommandEvent, AudioChunkEvent, VoiceCommandName, EchoMode } from 'echo-lidar';
 import {
   configureAudioService,
   speakWithFallback,
@@ -20,6 +20,7 @@ export type { EchoUpdate };
 export function useEchoLidar() {
   const [latest, setLatest] = useState<EchoUpdate | null>(null);
   const [latestCommand, setLatestCommand] = useState<VoiceCommandEvent | null>(null);
+  const [mode, setMode] = useState<EchoMode | null>(null);
   const [running, setRunning] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,31 +200,7 @@ export function useEchoLidar() {
     return null;
   };
 
-  const start = async (mode: 'echo' | 'describe' | 'quiet' = 'echo') => {
-    if (!isElevenLabsConfigured() || !isElevenSttConfigured()) {
-      setError('ElevenLabs is required. Set EXPO_PUBLIC_ELEVENLABS_API_KEY to enable voice and speech-to-text.');
-      setUseBuiltin(false);
-      return;
-    }
-
-    setError(null);
-    setUseBuiltin(false);
-    try {
-      await EchoLidarModule.start(mode, false);
-      setRunning(true);
-      try {
-        await EchoLidarModule.startVoiceCommands(false);
-        setListening(true);
-      } catch (voiceError: unknown) {
-        setListening(false);
-        setError(voiceError instanceof Error ? voiceError.message : String(voiceError));
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const stop = async () => {
+  const stopSession = useCallback(async () => {
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
@@ -243,7 +220,43 @@ export function useEchoLidar() {
       playerRef.current = null;
     }
     await EchoLidarModule.stop();
+  }, []);
+
+  const start = async (nextMode: EchoMode = 'echo') => {
+    if (!isElevenLabsConfigured() || !isElevenSttConfigured()) {
+      setError('ElevenLabs is required. Set EXPO_PUBLIC_ELEVENLABS_API_KEY to enable voice and speech-to-text.');
+      setUseBuiltin(false);
+      return;
+    }
+
+    setError(null);
+    setUseBuiltin(false);
+    try {
+      if (running) {
+        await stopSession();
+      }
+
+      await EchoLidarModule.start(nextMode, false);
+      setMode(nextMode);
+      setRunning(true);
+      try {
+        await EchoLidarModule.startVoiceCommands(false);
+        setListening(true);
+      } catch (voiceError: unknown) {
+        setListening(false);
+        setError(voiceError instanceof Error ? voiceError.message : String(voiceError));
+      }
+    } catch (e: unknown) {
+      setMode(null);
+      setRunning(false);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const stop = async () => {
+    await stopSession();
     setRunning(false);
+    setMode(null);
   };
 
   const speakCommand = useCallback(async (text: string): Promise<boolean> => {
@@ -318,5 +331,5 @@ export function useEchoLidar() {
     };
   }, [handleSpeechRequest, useBuiltin, elevenSttActive, startElevenStt]);
 
-  return { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop, speakCommand, useBuiltin };
+  return { latest, latestCommand, mode, running, listening, error, isSupported, supportsDepth, start, stop, speakCommand, useBuiltin };
 }

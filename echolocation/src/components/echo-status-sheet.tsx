@@ -9,7 +9,7 @@ type EchoState = ReturnType<typeof useEchoLidar>;
 const palette = Colors.light;
 
 export function EchoStatusSheet({ state }: { state: EchoState }) {
-  const { latest, latestCommand, running, listening, error, isSupported, supportsDepth, start, stop } = state;
+  const { latest, latestCommand, mode, running, listening, error, isSupported, supportsDepth, start, stop } = state;
 
   return (
     <BottomSheetView style={styles.container}>
@@ -19,6 +19,7 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
         <Row label="ARKit supported" value={isSupported ? '✓' : '✗'} />
         <Row label="LiDAR depth" value={supportsDepth ? '✓' : '✗'} />
         <Row label="Status" value={running ? 'running' : 'stopped'} />
+        <Row label="Mode" value={mode ?? '—'} />
         <Row label="Voice" value={listening ? 'listening' : 'off'} />
       </View>
 
@@ -35,7 +36,7 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
         </View>
       ) : (
         <View style={styles.card}>
-          <Text style={[styles.small, styles.muted, styles.center]}>no data yet — tap Start</Text>
+          <Text style={[styles.small, styles.muted, styles.center]}>no data yet — tap a mode</Text>
         </View>
       )}
 
@@ -46,14 +47,13 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
 
       {error ? <Text style={[styles.small, styles.center, styles.error]}>{error}</Text> : null}
 
+      <View style={styles.modeButtons}>
+        <ModeButton label="Echo" active={mode === 'echo'} onPress={() => start('echo')} />
+        <ModeButton label="Describe" active={mode === 'describe'} onPress={() => start('describe')} />
+        <ModeButton label="Quiet" active={mode === 'quiet'} onPress={() => start('quiet')} />
+      </View>
+
       <View style={styles.buttons}>
-        <Pressable
-          style={[styles.btn, styles.btnStart, running && styles.btnDisabled]}
-          onPress={() => start('echo')}
-          disabled={running}
-        >
-          <Text style={[styles.smallBold, styles.btnLabel]}>Start Echo</Text>
-        </Pressable>
         <Pressable
           style={[styles.btn, styles.btnStop, !running && styles.btnDisabled]}
           onPress={stop}
@@ -63,6 +63,17 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
         </Pressable>
       </View>
     </BottomSheetView>
+  );
+}
+
+function ModeButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      style={[styles.btn, styles.modeBtn, active && styles.modeBtnActive]}
+      onPress={onPress}
+    >
+      <Text style={[styles.smallBold, active ? styles.modeBtnLabelActive : styles.modeBtnLabel]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -95,6 +106,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttons: {
+    marginTop: 'auto',
+  },
+  modeButtons: {
     flexDirection: 'row',
     gap: Spacing.three,
   },
@@ -104,7 +118,17 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     alignItems: 'center',
   },
-  btnStart: { backgroundColor: '#3c87f7' },
+  modeBtn: {
+    backgroundColor: '#E7ECF4',
+    borderWidth: 1,
+    borderColor: '#CDD6E3',
+  },
+  modeBtnActive: {
+    backgroundColor: '#3c87f7',
+    borderColor: '#3c87f7',
+  },
+  modeBtnLabel: { color: palette.text },
+  modeBtnLabelActive: { color: '#ffffff' },
   btnStop: { backgroundColor: '#ff453a' },
   btnDisabled: { opacity: 0.4 },
   btnLabel: { color: '#ffffff' },
