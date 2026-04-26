@@ -2,9 +2,9 @@ import AVFoundation
 import Foundation
 import simd
 
-/// Plays a short HRTF-spatialized "ping" once per second, positioned at the
-/// nearest obstacle in world space. Pitch + cadence scale with distance so
-/// closer obstacles ping faster and higher.
+/// Plays a short HRTF-spatialized ping continuously, positioned at the
+/// nearest obstacle in world space. Pitch scales with distance so closer
+/// obstacles sound higher, while cadence stays effectively constant.
 final class SpatialPingPlayer {
   private let engine = AVAudioEngine()
   private let environment = AVAudioEnvironmentNode()
@@ -21,9 +21,10 @@ final class SpatialPingPlayer {
   private var running: Bool = false
 
   private let sampleRate: Double = 44_100
-  private let pingDurationSec: Double = 0.06
+  private let pingDurationSec: Double = 0.18
   private let baseFrequency: Float = 880
   private let defaultDistanceMeters: Float = 1.5
+  private let pingIntervalSec: TimeInterval = 0.18
 
   func start() {
     guard !running else { return }
@@ -36,7 +37,7 @@ final class SpatialPingPlayer {
       print("[SpatialPingPlayer] engine start failed: \(error)")
       return
     }
-    player.play()
+    ensurePlaybackChain()
     running = true
     schedulePings()
   }
@@ -116,27 +117,18 @@ final class SpatialPingPlayer {
   private func tickIfDue() {
     guard running, !muted, let buffer = pingBuffer else { return }
     let now = CACurrentMediaTime()
-    let interval = pingInterval(forDistance: emitterDistance)
-    guard now - lastPingAt >= interval else { return }
+    guard now - lastPingAt >= pingIntervalSec else { return }
     lastPingAt = now
     ensureAudioSession()
+    ensurePlaybackChain()
     updatePlayerPosition()
 
-    // Re-synthesize buffer if pitch should change with distance.
     let frequency = pitch(forDistance: emitterDistance)
     if let scaled = synthesizePing(frequency: frequency) {
       player.scheduleBuffer(scaled, at: nil, options: .interrupts, completionHandler: nil)
     } else {
       player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
     }
-  }
-
-  private func pingInterval(forDistance distance: Float?) -> TimeInterval {
-    guard let d = distance else { return 0.45 }
-    // Closer = faster pings: 0.3s at 0.5m, 1.5s at 5m.
-    let clamped = max(0.5, min(5.0, d))
-    let t = (clamped - 0.5) / 4.5
-    return 0.3 + Double(t) * 1.2
   }
 
   private func pitch(forDistance distance: Float?) -> Float {
@@ -198,19 +190,28 @@ final class SpatialPingPlayer {
     let audioSession = AVAudioSession.sharedInstance()
 
     do {
-      switch audioSession.category {
-      case .playback, .playAndRecord:
-        try audioSession.setActive(true)
-      default:
-        try audioSession.setCategory(
-          .playAndRecord,
-          mode: .default,
-          options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth, .allowBluetoothA2DP]
-        )
-        try audioSession.setActive(true)
-      }
+      try audioSession.setCategory(
+        .playAndRecord,
+        mode: .default,
+        options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth, .allowBluetoothA2DP]
+      )
+      try audioSession.setActive(true)
     } catch {
       print("[SpatialPingPlayer] audio session error: \(error)")
+    }
+  }
+
+  private func ensurePlaybackChain() {
+    if !engine.isRunning {
+      do {
+        try engine.start()
+      } catch {
+        print("[SpatialPingPlayer] engine restart failed: \(error)")
+      }
+    }
+
+    if !player.isPlaying {
+      player.play()
     }
   }
 }
