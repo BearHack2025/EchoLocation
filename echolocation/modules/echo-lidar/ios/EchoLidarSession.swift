@@ -18,10 +18,6 @@ enum EchoLidarSessionError: LocalizedError {
 final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   private let depthAnalyzer = DepthAnalyzer()
-  private let objectTracker = ObjectAnchorTracker()
-  private let textTracker = OCRTextTracker()
-  private lazy var mlkitDetector: MLKitObjectDetector = MLKitObjectDetector()
-  private lazy var ocrDetector: OCRTextDetector = OCRTextDetector()
   private let pingPlayer = SpatialPingPlayer()
   var speechController: SpeechController?
   var spatialPingsEnabled: Bool = true
@@ -74,8 +70,6 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     mockTimer = nil
     arSession.pause()
     pingPlayer.stop()
-    objectTracker.reset()
-    textTracker.reset()
     speechController?.stop()
     speechController = nil
   }
