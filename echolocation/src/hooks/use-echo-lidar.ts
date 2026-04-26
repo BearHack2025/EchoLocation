@@ -26,7 +26,6 @@ export function useEchoLidar() {
   const speechReleaseRef = useRef<((ok: boolean, message?: string) => void) | null>(null);
   const lastSpokenTextRef = useRef<string | null>(null);
   const lastHandledCommandTimestampRef = useRef<number>(0);
-  const autoStartAttemptedRef = useRef(false);
 
   const isSupported = EchoLidarModule.isSupported();
   const supportsDepth = EchoLidarModule.supportsDepth();
@@ -282,15 +281,6 @@ export function useEchoLidar() {
       }
     })();
   }, [latestCommand, latest, mode, running, speakCommand, start, stop, buildLatestSummary]);
-
-  useEffect(() => {
-    if (autoStartAttemptedRef.current || running || !isSupported || !supportsDepth) {
-      return;
-    }
-
-    autoStartAttemptedRef.current = true;
-    void start('describe');
-  }, [isSupported, running, start, supportsDepth]);
 
   useEffect(() => {
     const echoSub = EchoLidarEmitter.addListener('onEchoUpdate', (event) => {
