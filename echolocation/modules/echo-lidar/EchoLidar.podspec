@@ -32,5 +32,6 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
   s.dependency 'GoogleMLKit/ObjectDetection', '~> 6.0.0'
+  s.dependency 'GoogleMLKit/TextRecognition', '~> 6.0.0'
   install_modules_dependencies(s)
 end

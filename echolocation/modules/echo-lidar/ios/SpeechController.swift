@@ -10,9 +10,14 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   private var lastSpokenAt: Date = .distantPast
   private var lastDirection = ""
   private var lastDistanceBucket = -1
+  private var lastRecognizedText = ""
+  private var lastRecognizedTextDirection = ""
+  private var lastRecognizedTextSpokenAt: Date = .distantPast
 
   private let repeatInterval: TimeInterval = 3.0
   private let minInterval: TimeInterval = 1.0
+  private let textRepeatInterval: TimeInterval = 20.0
+  private let textDirectionRepeatInterval: TimeInterval = 8.0
 
   private var useBuiltinSpeech: Bool = true
   private var speechRate: Float = 0.5
@@ -82,6 +87,16 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
       let label = update["label"] as? String
     else { return }
 
+    if let recognizedText = normalizedRecognizedText(update["recognizedText"] as? String),
+       shouldSpeakRecognizedText(recognizedText, direction: direction) {
+      requestSpeech(
+        text: textPhrase(recognizedText, direction: direction, distance: distance),
+        mode: mode,
+        onSpeechRequest: onSpeechRequest
+      )
+      return
+    }
+
     if mode == "echo" {
       let bucket = distanceBucket(distance)
       guard direction != lastDirection || bucket != lastDistanceBucket else { return }
@@ -118,6 +133,9 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     lastSpokenAt = .distantPast
     lastDirection = ""
     lastDistanceBucket = -1
+    lastRecognizedText = ""
+    lastRecognizedTextDirection = ""
+    lastRecognizedTextSpokenAt = .distantPast
     pendingCompletion = nil
     isAwaitingAudio = false
 
@@ -151,6 +169,12 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     return "\(label) \(dir), \(dist)"
   }
 
+  private func textPhrase(_ text: String, direction: String, distance: Double) -> String {
+    let dir = direction == "center" ? "ahead" : "to your \(direction)"
+    let dist = formattedDistance(distance)
+    return "text \(dir), \(dist). \(text)"
+  }
+
   private func formattedDistance(_ meters: Double) -> String {
     if meters < 1.0 {
       return "very close"
@@ -170,6 +194,51 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     case ..<2.5: return 3
     default: return 4
     }
+  }
+
+  private func normalizedRecognizedText(_ text: String?) -> String? {
+    guard let text else { return nil }
+    let collapsed = text
+      .components(separatedBy: .whitespacesAndNewlines)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard collapsed.count >= 2 else { return nil }
+    return String(collapsed.prefix(120))
+  }
+
+  private func shouldSpeakRecognizedText(_ text: String, direction: String) -> Bool {
+    let normalized = canonicalizedRecognizedText(text)
+    let now = Date()
+    let sinceLast = now.timeIntervalSince(lastRecognizedTextSpokenAt)
+
+    if normalized == lastRecognizedText {
+      if direction == lastRecognizedTextDirection && sinceLast < textRepeatInterval {
+        return false
+      }
+      if sinceLast < textDirectionRepeatInterval {
+        return false
+      }
+    }
+
+    lastRecognizedText = normalized
+    lastRecognizedTextDirection = direction
+    lastRecognizedTextSpokenAt = now
+    lastPhrase = text
+    lastSpokenAt = now
+    return true
+  }
+
+  private func canonicalizedRecognizedText(_ text: String) -> String {
+    let allowed = CharacterSet.alphanumerics.union(.whitespaces)
+    let scalars = text.unicodeScalars.map { allowed.contains($0) ? Character($0) : " " }
+    let collapsed = String(scalars)
+      .components(separatedBy: .whitespacesAndNewlines)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    return String(collapsed.prefix(120))
   }
 }
 

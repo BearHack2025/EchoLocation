@@ -1,6 +1,6 @@
 export type EchoDirection = 'left' | 'center' | 'right' | 'unknown';
 
-export type EchoMode = 'echo' | 'describe' | 'quiet';
+export type EchoMode = 'describe' | 'quiet';
 
 export type EchoLabel =
   | 'obstacle'
@@ -20,6 +20,9 @@ export type EchoUpdate = {
   mode: EchoMode;
   timestampMs: number;
   source: 'mock' | 'arkit';
+  labelSource?: 'arkit-mesh' | 'mlkit';
+  recognizedText?: string;
+  textSource?: 'ocr';
 };
 
 export type EchoSupportStatus = {
@@ -30,8 +33,6 @@ export type EchoSupportStatus = {
 
 export type VoiceCommandName =
   | 'ahead'
-  | 'left'
-  | 'right'
   | 'repeat'
   | 'describe_mode'
   | 'quiet_mode'

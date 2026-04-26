@@ -11,7 +11,9 @@ final class SpatialPingPlayer {
   private let player = AVAudioPlayerNode()
 
   private var pingBuffer: AVAudioPCMBuffer?
-  private var pingTimer: Timer?
+  private var engineConfigured = false
+  private var currentFrequency: Float?
+  private var currentPulseRate: Float?
 
   private var listenerTransform: simd_float4x4 = matrix_identity_float4x4
   private var emitterWorldPoint: SIMD3<Float>?
@@ -21,38 +23,37 @@ final class SpatialPingPlayer {
   private var running: Bool = false
 
   private let sampleRate: Double = 44_100
-  private let pingDurationSec: Double = 0.18
+  private let loopDurationSec: Double = 1.0
   private let baseFrequency: Float = 880
   private let defaultDistanceMeters: Float = 1.5
-  private let pingIntervalSec: TimeInterval = 0.18
 
   func start() {
     guard !running else { return }
     ensureAudioSession()
     setupEngine()
-    pingBuffer = synthesizePing(frequency: baseFrequency)
     do {
       try engine.start()
     } catch {
       print("[SpatialPingPlayer] engine start failed: \(error)")
       return
     }
-    ensurePlaybackChain()
     running = true
-    schedulePings()
+    updatePlayerPosition()
+    refreshLoopingBuffer(force: true)
   }
 
   func stop() {
-    pingTimer?.invalidate()
-    pingTimer = nil
     player.stop()
+    player.reset()
     engine.stop()
-    lastPingAt = 0
+    currentFrequency = nil
+    currentPulseRate = nil
     running = false
   }
 
   func setMuted(_ muted: Bool) {
     self.muted = muted
+    player.volume = muted ? 0 : 1
   }
 
   func updateListener(transform: simd_float4x4) {
@@ -81,11 +82,13 @@ final class SpatialPingPlayer {
     emitterWorldPoint = worldPoint
     emitterDistance = distance
     updatePlayerPosition()
+    refreshLoopingBuffer()
   }
 
   // MARK: Private
 
   private func setupEngine() {
+    guard !engineConfigured else { return }
     environment.renderingAlgorithm = .HRTFHQ
     environment.distanceAttenuationParameters.distanceAttenuationModel = .inverse
     environment.distanceAttenuationParameters.referenceDistance = 0.5
@@ -101,34 +104,35 @@ final class SpatialPingPlayer {
 
     player.renderingAlgorithm = .HRTFHQ
     player.sourceMode = .pointSource
+    engineConfigured = true
   }
 
-  private func schedulePings() {
-    pingTimer?.invalidate()
-    let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
-      self?.tickIfDue()
-    }
-    RunLoop.main.add(timer, forMode: .common)
-    pingTimer = timer
-  }
-
-  private var lastPingAt: TimeInterval = 0
-
-  private func tickIfDue() {
-    guard running, !muted, let buffer = pingBuffer else { return }
-    let now = CACurrentMediaTime()
-    guard now - lastPingAt >= pingIntervalSec else { return }
-    lastPingAt = now
+  private func refreshLoopingBuffer(force: Bool = false) {
+    guard running else { return }
     ensureAudioSession()
     ensurePlaybackChain()
-    updatePlayerPosition()
-
     let frequency = pitch(forDistance: emitterDistance)
-    if let scaled = synthesizePing(frequency: frequency) {
-      player.scheduleBuffer(scaled, at: nil, options: .interrupts, completionHandler: nil)
-    } else {
-      player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
+    let pulseRate = pulseRate(forDistance: emitterDistance)
+
+    if !force,
+       let currentFrequency,
+       let currentPulseRate,
+       abs(currentFrequency - frequency) < 25,
+       abs(currentPulseRate - pulseRate) < 0.25,
+       pingBuffer != nil {
+      return
     }
+
+    guard let loopBuffer = synthesizeLoopingPing(frequency: frequency, pulseRate: pulseRate) else { return }
+    pingBuffer = loopBuffer
+    currentFrequency = frequency
+    currentPulseRate = pulseRate
+
+    player.stop()
+    player.reset()
+    player.scheduleBuffer(loopBuffer, at: nil, options: .loops, completionHandler: nil)
+    player.volume = muted ? 0 : 1
+    player.play()
   }
 
   private func pitch(forDistance distance: Float?) -> Float {
@@ -137,6 +141,13 @@ final class SpatialPingPlayer {
     let clamped = max(0.5, min(5.0, d))
     let t = (clamped - 0.5) / 4.5
     return 1320 - Float(t) * 660
+  }
+
+  private func pulseRate(forDistance distance: Float?) -> Float {
+    guard let d = distance else { return 4.8 }
+    let clamped = max(0.5, min(5.0, d))
+    let t = (clamped - 0.5) / 4.5
+    return 6.0 - Float(t) * 2.5
   }
 
   private func updatePlayerPosition() {
@@ -160,28 +171,22 @@ final class SpatialPingPlayer {
     return origin + (forward * defaultDistanceMeters)
   }
 
-  private func synthesizePing(frequency: Float) -> AVAudioPCMBuffer? {
+  private func synthesizeLoopingPing(frequency: Float, pulseRate: Float) -> AVAudioPCMBuffer? {
     let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
-    let frameCount = AVAudioFrameCount(sampleRate * pingDurationSec)
+    let frameCount = AVAudioFrameCount(sampleRate * loopDurationSec)
     guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
     buffer.frameLength = frameCount
 
     let samples = buffer.floatChannelData![0]
     let twoPiF = 2 * Float.pi * frequency
+    let twoPiPulse = 2 * Float.pi * pulseRate
     let sr = Float(sampleRate)
-    let totalFrames = Float(frameCount)
 
-    // Sine with attack/decay envelope.
     for i in 0..<Int(frameCount) {
       let t = Float(i) / sr
-      let progress = Float(i) / totalFrames
-      let envelope: Float
-      if progress < 0.1 {
-        envelope = progress / 0.1
-      } else {
-        envelope = max(0, 1 - (progress - 0.1) / 0.9)
-      }
-      samples[i] = sinf(twoPiF * t) * envelope * 0.6
+      let pulseShape = max(0, sinf(twoPiPulse * t))
+      let envelope = 0.22 + (powf(pulseShape, 1.35) * 0.78)
+      samples[i] = sinf(twoPiF * t) * envelope * 0.45
     }
     return buffer
   }
@@ -210,7 +215,7 @@ final class SpatialPingPlayer {
       }
     }
 
-    if !player.isPlaying {
+    if !player.isPlaying, pingBuffer != nil {
       player.play()
     }
   }

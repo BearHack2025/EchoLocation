@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
+import * as Speech from 'expo-speech';
 
 import EchoLidarModule, { EchoLidarEmitter } from 'echo-lidar';
 import type { EchoUpdate, VoiceCommandEvent, EchoMode } from 'echo-lidar';
@@ -25,6 +26,7 @@ export function useEchoLidar() {
   const speechReleaseRef = useRef<((ok: boolean, message?: string) => void) | null>(null);
   const lastSpokenTextRef = useRef<string | null>(null);
   const lastHandledCommandTimestampRef = useRef<number>(0);
+  const autoStartAttemptedRef = useRef(false);
 
   const isSupported = EchoLidarModule.isSupported();
   const supportsDepth = EchoLidarModule.supportsDepth();
@@ -143,6 +145,11 @@ export function useEchoLidar() {
       return 'Nothing detected right now.';
     }
 
+    if (update.recognizedText) {
+      const dir = update.direction === 'center' ? 'ahead' : `to your ${update.direction}`;
+      return `Text ${dir}. ${update.recognizedText}`;
+    }
+
     let distance = 'unknown distance';
     if (update.nearestDistanceMeters < 1.0) {
       distance = 'very close';
@@ -175,28 +182,29 @@ export function useEchoLidar() {
   }, []);
 
   const start = useCallback(async (nextMode: EchoMode = 'describe') => {
-    if (!isElevenLabsConfigured()) {
-      setError('ElevenLabs voice is required. Set EXPO_PUBLIC_ELEVENLABS_API_KEY to enable spoken feedback.');
-      setUseBuiltin(false);
-      return;
-    }
-
+    const shouldUseBuiltin = !isElevenLabsConfigured();
     setError(null);
-    setUseBuiltin(false);
+    setUseBuiltin(shouldUseBuiltin);
     try {
       if (running) {
         await stopSession();
       }
 
-      await EchoLidarModule.start(nextMode, false);
+      await EchoLidarModule.start(nextMode, shouldUseBuiltin);
       setMode(nextMode);
       setRunning(true);
-      try {
-        await EchoLidarModule.startVoiceCommands(true);
-        setListening(true);
-      } catch (voiceError: unknown) {
+
+      if (nextMode === 'describe') {
+        try {
+          await EchoLidarModule.startVoiceCommands(true);
+          setListening(true);
+        } catch (voiceError: unknown) {
+          setListening(false);
+          setError(voiceError instanceof Error ? voiceError.message : String(voiceError));
+        }
+      } else {
+        await EchoLidarModule.stopVoiceCommands();
         setListening(false);
-        setError(voiceError instanceof Error ? voiceError.message : String(voiceError));
       }
     } catch (e: unknown) {
       setMode('describe');
@@ -213,6 +221,12 @@ export function useEchoLidar() {
 
   const speakCommand = useCallback(async (text: string): Promise<boolean> => {
     lastSpokenTextRef.current = text;
+    if (useBuiltin || !isElevenLabsConfigured()) {
+      Speech.stop();
+      Speech.speak(text, { language: 'en-US', rate: 0.5, pitch: 1.0 });
+      return true;
+    }
+
     try {
       const audioUrl = await speakWithFallback(text, 'describe');
       await playAudioUrl(audioUrl);
@@ -220,10 +234,12 @@ export function useEchoLidar() {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       console.warn('[Audio] Voice command TTS failed:', e);
+      Speech.stop();
+      Speech.speak(text, { language: 'en-US', rate: 0.5, pitch: 1.0 });
       setError(`ElevenLabs voice failed: ${message}`);
-      return false;
+      return true;
     }
-  }, [playAudioUrl]);
+  }, [playAudioUrl, useBuiltin]);
 
   useEffect(() => {
     if (!latestCommand) {
@@ -266,6 +282,15 @@ export function useEchoLidar() {
       }
     })();
   }, [latestCommand, latest, mode, running, speakCommand, start, stop, buildLatestSummary]);
+
+  useEffect(() => {
+    if (autoStartAttemptedRef.current || running || !isSupported || !supportsDepth) {
+      return;
+    }
+
+    autoStartAttemptedRef.current = true;
+    void start('describe');
+  }, [isSupported, running, start, supportsDepth]);
 
   useEffect(() => {
     const echoSub = EchoLidarEmitter.addListener('onEchoUpdate', (event) => {

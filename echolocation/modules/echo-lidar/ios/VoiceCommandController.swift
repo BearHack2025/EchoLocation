@@ -266,12 +266,6 @@ final class VoiceCommandController: NSObject {
     if text.contains("repeat") {
       return "repeat"
     }
-    if text.contains("left") {
-      return "left"
-    }
-    if text.contains("right") {
-      return "right"
-    }
     if text.contains("ahead") || text.contains("what's ahead") || text.contains("what is ahead") || text.contains("in front") {
       return "ahead"
     }

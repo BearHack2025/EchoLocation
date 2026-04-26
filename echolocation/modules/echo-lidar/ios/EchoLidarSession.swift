@@ -19,7 +19,9 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let arSession = ARSession()
   private let depthAnalyzer = DepthAnalyzer()
   private let objectTracker = ObjectAnchorTracker()
+  private let textTracker = OCRTextTracker()
   private lazy var mlkitDetector: MLKitObjectDetector = MLKitObjectDetector()
+  private lazy var ocrDetector: OCRTextDetector = OCRTextDetector()
   private let pingPlayer = SpatialPingPlayer()
   var speechController: SpeechController?
   var spatialPingsEnabled: Bool = true
@@ -73,6 +75,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     arSession.pause()
     pingPlayer.stop()
     objectTracker.reset()
+    textTracker.reset()
     speechController?.stop()
     speechController = nil
   }
@@ -82,14 +85,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   }
 
   func session(_ session: ARSession, didUpdate frame: ARFrame) {
-    objectTracker.tick()
-
-    _ = mlkitDetector.detectIfReady(frame: frame) { [weak self] detections in
-      guard let self else { return }
-      self.objectTracker.ingest(detections)
-    }
-
-    guard let update = depthAnalyzer.analyze(frame: frame, mode: mode, tracker: objectTracker) else {
+    guard let update = depthAnalyzer.analyze(frame: frame, mode: mode) else {
       return
     }
 
@@ -99,7 +95,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
         worldPoint: depthAnalyzer.lastNearestWorldPoint,
         distance: depthAnalyzer.lastNearestDistance
       )
-      pingPlayer.setMuted(mode != "echo" && (speechController?.isSpeaking ?? false))
+      pingPlayer.setMuted(false)
     }
 
     speechController?.process(update: update, mode: mode) { [weak self] text, speechMode in

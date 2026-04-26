@@ -36,7 +36,7 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
         </View>
       ) : (
         <View style={styles.card}>
-          <Text style={[styles.small, styles.muted, styles.center]}>no data yet — tap a mode</Text>
+          <Text style={[styles.small, styles.muted, styles.center]}>no data yet — describe starts automatically</Text>
         </View>
       )}
 
@@ -48,7 +48,6 @@ export function EchoStatusSheet({ state }: { state: EchoState }) {
       {error ? <Text style={[styles.small, styles.center, styles.error]}>{error}</Text> : null}
 
       <View style={styles.modeButtons}>
-        <ModeButton label="Echo" active={mode === 'echo'} onPress={() => start('echo')} />
         <ModeButton label="Describe" active={mode === 'describe'} onPress={() => start('describe')} />
         <ModeButton label="Quiet" active={mode === 'quiet'} onPress={() => start('quiet')} />
       </View>

@@ -8,7 +8,12 @@ final class DepthAnalyzer {
   private(set) var lastNearestWorldPoint: SIMD3<Float>?
   private(set) var lastNearestDistance: Float?
 
-  func analyze(frame: ARFrame, mode: String, tracker: ObjectAnchorTracker? = nil) -> [String: Any]? {
+  func analyze(
+    frame: ARFrame,
+    mode: String,
+    tracker: ObjectAnchorTracker? = nil,
+    textTracker: OCRTextTracker? = nil
+  ) -> [String: Any]? {
     guard let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth else {
       return nil
     }
@@ -124,6 +129,12 @@ final class DepthAnalyzer {
     lastNearestWorldPoint = worldPoint
     lastNearestDistance = bestDistance
 
+    let recognizedText = textTracker?.bestText(
+      near: worldPoint,
+      bearing: bestDirection,
+      distanceHint: bestDistance
+    )
+
     if let tracker, let match = tracker.bestLabel(
       near: worldPoint,
       bearing: bestDirection,
@@ -133,7 +144,7 @@ final class DepthAnalyzer {
       labelSource = "mlkit"
     }
 
-    return [
+    var payload: [String: Any] = [
       "nearestDistanceMeters": Double(bestDistance),
       "direction": bestDirection,
       "label": label,
@@ -143,6 +154,11 @@ final class DepthAnalyzer {
       "source": "arkit",
       "labelSource": labelSource
     ]
+    if let recognizedText {
+      payload["recognizedText"] = recognizedText.text
+      payload["textSource"] = "ocr"
+    }
+    return payload
   }
 
   private func unproject(
