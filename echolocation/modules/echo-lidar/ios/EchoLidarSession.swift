@@ -20,6 +20,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
   private let depthAnalyzer = DepthAnalyzer()
   private let objectTracker = ObjectAnchorTracker()
   private lazy var mlkitDetector: MLKitObjectDetector = MLKitObjectDetector()
+  private let ocrDetector = OCRDetector()
   private let pingPlayer = SpatialPingPlayer()
   var speechController: SpeechController?
   var spatialPingsEnabled: Bool = true
@@ -73,6 +74,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     arSession.pause()
     pingPlayer.stop()
     objectTracker.reset()
+    ocrDetector.reset()
     speechController?.stop()
     speechController = nil
   }
@@ -87,6 +89,18 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
     _ = mlkitDetector.detectIfReady(frame: frame) { [weak self] detections in
       guard let self else { return }
       self.objectTracker.ingest(detections)
+    }
+
+    if mode != "quiet" {
+      ocrDetector.detectIfReady(frame: frame) { [weak self] text in
+        guard let self else { return }
+        guard self.speechController?.isSpeaking == false else { return }
+        self.speechController?.speakBuiltinText(text)
+        self.sendEvent?("onOcrText", [
+          "text": text,
+          "timestamp": Date().timeIntervalSince1970
+        ])
+      }
     }
 
     guard let update = depthAnalyzer.analyze(frame: frame, mode: mode, tracker: objectTracker) else {
