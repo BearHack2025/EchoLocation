@@ -124,7 +124,11 @@ final class DepthAnalyzer {
     lastNearestWorldPoint = worldPoint
     lastNearestDistance = bestDistance
 
-    if let tracker, let match = tracker.bestLabel(near: worldPoint) {
+    if let tracker, let match = tracker.bestLabel(
+      near: worldPoint,
+      bearing: bestDirection,
+      distanceHint: bestDistance
+    ) {
       label = match.label
       labelSource = "mlkit"
     }

@@ -9,8 +9,8 @@ final class MLKitObjectDetector {
   private var inFlight = false
   private var frameCounter = 0
 
-  // Run detector ~5 fps assuming a 60 fps ARSession.
-  private let frameStride = 12
+  // Run detector ~10 fps assuming a 60 fps ARSession.
+  private let frameStride = 6
 
   init() {
     let options = ObjectDetectorOptions()
@@ -159,7 +159,10 @@ final class MLKitObjectDetector {
     let origin = SIMD3<Float>(cameraTransform.columns.3.x,
                               cameraTransform.columns.3.y,
                               cameraTransform.columns.3.z)
-    if unprojected.x.isFinite && unprojected.y.isFinite && unprojected.z.isFinite {
+    if let unprojected,
+       unprojected.x.isFinite,
+       unprojected.y.isFinite,
+       unprojected.z.isFinite {
       return unprojected
     }
     return origin + forward * depth

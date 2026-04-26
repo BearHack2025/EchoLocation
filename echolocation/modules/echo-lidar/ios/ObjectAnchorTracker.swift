@@ -28,9 +28,10 @@ final class ObjectAnchorTracker {
 
   // Eviction / fusion knobs.
   private let historySize = 6
-  private let evictAfterFrames = 30
-  private let maxMatchDistanceMeters: Float = 0.3
-  private let highConfidenceThreshold: Float = 0.7
+  private let evictAfterFrames = 45
+  private let maxMatchDistanceMeters: Float = 0.6
+  private let maxDistanceDeltaMeters: Float = 1.0
+  private let highConfidenceThreshold: Float = 0.45
 
   func tick() {
     frameCounter += 1
@@ -67,8 +68,13 @@ final class ObjectAnchorTracker {
     }
   }
 
-  /// Best label near a given world point, or nil if no high-confidence match.
-  func bestLabel(near worldPoint: SIMD3<Float>) -> (label: String, confidence: Float)? {
+  /// Best label near a given world point, with a fallback that uses bearing and
+  /// rough distance when the exact 3D point does not line up cleanly.
+  func bestLabel(
+    near worldPoint: SIMD3<Float>,
+    bearing: String,
+    distanceHint: Float
+  ) -> (label: String, confidence: Float)? {
     var best: (entry: Entry, dist: Float)?
     for (_, entry) in entries {
       let d = simd_distance(entry.worldPoint, worldPoint)
@@ -78,22 +84,54 @@ final class ObjectAnchorTracker {
         }
       }
     }
-    guard let chosen = best?.entry else { return nil }
 
-    // Most-frequent label across recent frames, with averaged confidence.
-    var freq: [String: Int] = [:]
-    var confSum: [String: Float] = [:]
-    for (i, label) in chosen.labelHistory.enumerated() {
-      freq[label, default: 0] += 1
-      confSum[label, default: 0] += chosen.confidenceHistory[i]
+    if let chosen = best?.entry, let label = resolvedLabel(for: chosen) {
+      return label
     }
-    guard let topLabel = freq.max(by: { $0.value < $1.value })?.key else { return nil }
-    let avgConf = (confSum[topLabel] ?? 0) / Float(freq[topLabel] ?? 1)
+
+    var fallback: (entry: Entry, distanceDelta: Float)?
+    for (_, entry) in entries {
+      guard entry.bearing == bearing else { continue }
+      let distanceDelta = abs(entry.distance - distanceHint)
+      guard distanceDelta <= maxDistanceDeltaMeters else { continue }
+      if fallback == nil || distanceDelta < fallback!.distanceDelta {
+        fallback = (entry, distanceDelta)
+      }
+    }
+
+    guard let chosen = fallback?.entry else { return nil }
+    return resolvedLabel(for: chosen)
+  }
+
+  private func resolvedLabel(for chosen: Entry) -> (label: String, confidence: Float)? {
+    guard let topLabel = mostLikelyLabel(for: chosen) else { return nil }
+    let avgConf = averageConfidence(for: topLabel, in: chosen)
 
     if avgConf < highConfidenceThreshold {
       return nil
     }
     return (topLabel, avgConf)
+  }
+
+  private func mostLikelyLabel(for chosen: Entry) -> String? {
+    var freq: [String: Int] = [:]
+    for label in chosen.labelHistory {
+      freq[label, default: 0] += 1
+    }
+    return freq.max(by: { $0.value < $1.value })?.key
+  }
+
+  private func averageConfidence(for targetLabel: String, in chosen: Entry) -> Float {
+    var confSum: Float = 0
+    var count: Int = 0
+    for (i, label) in chosen.labelHistory.enumerated() {
+      if label == targetLabel {
+        confSum += chosen.confidenceHistory[i]
+        count += 1
+      }
+    }
+    guard count > 0 else { return 0 }
+    return confSum / Float(count)
   }
 
   /// All currently tracked labeled objects (for richer JS payloads if needed).

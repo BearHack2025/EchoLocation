@@ -94,9 +94,12 @@ public final class EchoLidarModule: Module {
     }
 
     AsyncFunction("stopVoiceCommands") { [weak self] in
+      guard let voiceCommandController = self?.voiceCommandController else {
+        return
+      }
       await MainActor.run {
-        self?.voiceCommandController.onAudioChunk = nil
-        self?.voiceCommandController.stopListening()
+        voiceCommandController.onAudioChunk = nil
+        voiceCommandController.stopListening()
       }
     }
 
