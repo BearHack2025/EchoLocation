@@ -33,7 +33,7 @@ export type SpeechMode = 'echo' | 'describe';
 
 const ELEVENLABS_VOICE_IDS: Record<SpeechMode, string> = {
   echo: '21m00Tcm4TlvDq8ikWAM',
-  describe: 'EXw4nqY7xTfnS2A7P8xL',
+  describe: 'zmcVlqmyk3Jpn5AVYcAL',
 };
 
 const SPEECH_TIMEOUT_MS = 5000;

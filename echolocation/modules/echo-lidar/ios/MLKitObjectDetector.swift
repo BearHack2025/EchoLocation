@@ -159,8 +159,8 @@ final class MLKitObjectDetector {
     let origin = SIMD3<Float>(cameraTransform.columns.3.x,
                               cameraTransform.columns.3.y,
                               cameraTransform.columns.3.z)
-    if unprojected.x.isFinite && unprojected.y.isFinite && unprojected.z.isFinite {
-      return unprojected
+    if let point = unprojected, point.x.isFinite, point.y.isFinite, point.z.isFinite {
+      return point
     }
     return origin + forward * depth
   }
