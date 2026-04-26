@@ -20,6 +20,7 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
   private var speechVoice: String = "en-US"
 
   private var isAwaitingAudio: Bool = false
+  private var isSpeakingOCR: Bool = false
 
   override init() {
     super.init()
@@ -72,8 +73,16 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     speakBuiltin(text: text, mode: "direct")
   }
 
+  func speakOCRText(_ text: String) {
+    isSpeakingOCR = true
+    speakBuiltin(text: text, mode: "ocr")
+  }
+
+  var isOCRSpeaking: Bool { isSpeakingOCR }
+
   func process(update: [String: Any], mode: String, onSpeechRequest: @escaping (String, String) -> Void) {
     guard mode != "quiet" else { return }
+    guard !isSpeakingOCR else { return }
     guard !isSpeaking else { return }
 
     guard
@@ -170,6 +179,16 @@ final class SpeechController: NSObject, AVSpeechSynthesizerDelegate, @unchecked 
     case ..<2.5: return 3
     default: return 4
     }
+  }
+}
+
+extension SpeechController {
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+    isSpeakingOCR = false
+  }
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+    isSpeakingOCR = false
   }
 }
 

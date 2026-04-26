@@ -95,7 +95,7 @@ final class EchoLidarSession: NSObject, ARSessionDelegate {
       ocrDetector.detectIfReady(frame: frame) { [weak self] text in
         guard let self else { return }
         print("[OCR] speaking: \(text)")
-        self.speechController?.speakBuiltinText(text)
+        self.speechController?.speakOCRText(text)
         self.sendEvent?("onOcrText", [
           "text": text,
           "timestamp": Date().timeIntervalSince1970

@@ -15,7 +15,7 @@ final class OCRDetector {
   // Always wait at least this long between any two OCR speeches.
   private let minSpeakInterval: TimeInterval = 4.0
 
-  private let minConfidence: VNConfidence = 0.5
+  private let minConfidence: VNConfidence = 0.85
   private let minCharCount = 3
 
   private var lastSpokenText: String = ""
